@@ -11,6 +11,7 @@ parentdir = os.path.dirname(os.path.dirname(currentdir))
 os.sys.path.insert(0,parentdir)
 #from my_controller import MyController
 from PPOAgent import PPOAgent
+from MultiprocessEnv import SubprocVecEnv
 
 Controller = PPOAgent
 
@@ -50,7 +51,7 @@ def demo_run(extrinsic_trials=10):
                              clip              = 0.2,
                              entropy_coeff     = 0.05,
                              log_std           = 0.,
-                             use_parallel      = False,
+                             use_parallel      = True,
                              logs              = False,
                              logs_dir          = "-robot")
 
@@ -65,7 +66,7 @@ def demo_run(extrinsic_trials=10):
     
     
     # reset simulation
-    observation = env.reset()  
+    observation = envs.reset()  
     reward = 0
     reward_count = 0
     done = False
@@ -87,53 +88,53 @@ def demo_run(extrinsic_trials=10):
         ######################
         # Display information
         
-        if frame % 3000 == 0:
-            print("Frame (actual actions) : ", frame // controller.frames_per_action, "/", env.intrinsic_timesteps // controller.frames_per_action)
-            controller.save_models("models.pth")
+        # if frame % 3000 == 0:
+        #     print("Frame (actual actions) : ", frame // controller.frames_per_action, "/", env.intrinsic_timesteps // controller.frames_per_action)
+        #     #controller.save_models("models.pth")
             
 
         #####################
         # Before each 'real' step (i.e. controller.frames_per_action frames)
-        if frame % controller.frames_per_action == 1 and frame >= controller.init_wait:
-            for i, obj in enumerate(objects_names):
-                obj_init_pos[i] = env.get_obj_pos(obj)
+        # if frame % controller.frames_per_action == 1 and frame >= controller.init_wait:
+        #     for i, obj in enumerate(objects_names):
+        #         obj_init_pos[i] = env.get_obj_pos(obj)
 
-            had_contact = False
+        #     had_contact = False
                 
         # Call your controller to chose action 
         action = controller.step(observation, reward, done)
 
         frame += 1
 
-        contacts = env.get_contacts()
-        if contacts:
-            for robot_part in contacts:
-                if "finger" in robot_part: # We are checking if the 'fingers' touched something
-                    objects_touched = contacts[robot_part]
-                    if any(object_touched == "orange" for object_touched in objects_touched):
-                        had_contact = True
-                        break
+        # contacts = env.get_contacts()
+        # if contacts:
+        #     for robot_part in contacts:
+        #         if "finger" in robot_part: # We are checking if the 'fingers' touched something
+        #             objects_touched = contacts[robot_part]
+        #             if any(object_touched == "orange" for object_touched in objects_touched):
+        #                 had_contact = True
+        #                 break
 
         # do action
-        observation, reward, done, _ = env.step(action)
+        observation, reward, done, _ = envs.step(action)
 
 
         ######################
         # After each 'real' step
-        if frame % controller.frames_per_action == 0 and frame >= controller.init_wait + 1:
-            for i, obj in enumerate(objects_names):
-                obj_cur_pos[i] = env.get_obj_pos(obj)
+        # if frame % controller.frames_per_action == 0 and frame >= controller.init_wait + 1:
+        #     for i, obj in enumerate(objects_names):
+        #         obj_cur_pos[i] = env.get_obj_pos(obj)
 
-            #reward = 1 if (((obj_init_pos - obj_cur_pos).mean())**2 > 1e-6) else -1   # Reward for moving something. Observations should be images here
-            #reward = 1 if had_contact else 0   # Reward for touching something
+        #     #reward = 1 if (((obj_init_pos - obj_cur_pos).mean())**2 > 1e-6) else -1   # Reward for moving something. Observations should be images here
+        #     #reward = 1 if had_contact else 0   # Reward for touching something
             
-            distance_orange = min([euclidean_distance(env.get_obj_pos("tomato"), env.get_part_pos("finger_" + digits)) for digits in ["10", "11"]])
+        #     distance_orange = min([euclidean_distance(env.get_obj_pos("tomato"), env.get_part_pos("finger_" + digits)) for digits in ["10", "11"]])
 
-            reward = 1 - (1. / distance_orange) + 100*had_contact
+        #     reward = 1 - (1. / distance_orange) + 100*had_contact
             
-            if reward > 50:
-                reward_count += 1
-                print("High reward ", reward_count, "at frame ", frame // controller.frames_per_action)
+            # if reward > 50:
+            #     reward_count += 1
+            #     print("High reward ", reward_count, "at frame ", frame // controller.frames_per_action)
 
         # get frames for video making
         # rgb_array = env.render('rgb_array')

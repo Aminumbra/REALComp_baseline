@@ -43,7 +43,7 @@ def create_envs(env_id="Pendulum-v0", num_envs=16):
 # Run the function now, as several things are global variables
 # used later in the code
 
-env, envs, size_obs, num_actions, discrete_action_space, num_envs = create_envs(env_id="BipedalWalker-v2", num_envs=8)
+env, envs, size_obs, num_actions, discrete_action_space, num_envs = create_envs(env_id="Pendulum-v0", num_envs=8)
 
 ############################################
 
@@ -66,9 +66,9 @@ controller = Controller(action_space      = env.action_space,
                         clip              = 0.2,
                         entropy_coeff     = 0.005,
                         log_std           = 0.,
-                        use_parallel      = False,
+                        use_parallel      = True,
                         logs              = False,
-                        logs_dir          = "-BipedalWalker")
+                        logs_dir          = "-pendulum")
 
 
 controller.convert_observation_to_input = convert_observation_to_input
@@ -76,23 +76,22 @@ controller.convert_observation_to_input = convert_observation_to_input
 signal.signal(signal.SIGINT, signal.default_int_handler)
 
 
-state  = env.reset()
+state  = envs.reset()
 reward = 0
 done   = 0
 
 frame = 0
 
 try:
-    while frame < 10000:
+    while frame < 20000:
         frame += 1
     
         action = controller.step(state, reward, done)
-        state, reward, done, _ = env.step(action)
-
-        env.render()
+        state, reward, done, _ = envs.step(action)
         
         if frame % 5000 == 0:
             print("Frame ", frame)
+        
             
 except KeyboardInterrupt:
     if controller.logs:

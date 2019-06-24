@@ -103,7 +103,7 @@ class PPOAgent:
                  entropy_coeff     = 0.1,
                  log_std           = -0.6,
                  use_parallel      = False,
-                 logs              = True,
+                 logs              = False,
                  logs_dir          = ""):
 
         """
