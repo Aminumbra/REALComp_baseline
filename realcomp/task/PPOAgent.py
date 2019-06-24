@@ -301,17 +301,17 @@ class PPOAgent:
 
     # Functions used by the PPO algorithm in itself
 
-    def compute_returns_gae(self, next_value, rewards, not_done, values):
+    def compute_returns_gae(self, next_value):
     
-        values = values + [next_value] #Can't simply append, as it would modify external values
+        values = self.values + [next_value] #Can't simply append, as it would modify external values
 
         advantage = 0
         returns   = []
 
-        for step in reversed(range(len(rewards))):
+        for step in reversed(range(len(self.rewards))):
 
-            delta     = rewards[step] + self.gamma * values[step + 1] * not_done[step] - values[step]
-            advantage = delta + self.gamma * self.gae_lambda * not_done[step] * advantage
+            delta     = self.rewards[step] + self.gamma * self.values[step + 1] * self.not_done[step] - self.values[step]
+            advantage = delta + self.gamma * self.gae_lambda * self.not_done[step] * advantage
 
             returns.insert(0, advantage + values[step])
 
@@ -335,17 +335,12 @@ class PPOAgent:
 
 
     def ppo_full_step(self,
-                      ppo_epochs,
-                      mini_batch_size,
-                      states,
-                      actions,
-                      log_probas,
                       returns,
                       advantages):
 
-        for k in range(ppo_epochs):
+        for k in range(self.epochs):
 
-            for state, action, old_log_probas, return_, advantage in self.ppo_iterator(mini_batch_size, states, actions, log_probas, returns, advantages):
+            for state, action, old_log_probas, return_, advantage in self.ppo_iterator(self.mini_batch_size, self.states, self.actions, self.log_probas, returns, advantages):
                 
                 dist  = self.actor(state)
 
@@ -469,7 +464,7 @@ class PPOAgent:
         next_dist  = self.actor(next_state)
         next_value = self.critic(next_state)
 
-        returns    = self.compute_returns_gae(next_value, self.rewards, self.not_done, self.values)
+        returns    = self.compute_returns_gae(next_value)
 
         # Detach the useful tensors
         self.log_probas = torch.cat(self.log_probas).detach()
@@ -486,12 +481,12 @@ class PPOAgent:
         advantages = returns - self.values
 
         # Update !
-        self.ppo_full_step(self.epochs, self.mini_batch_size, self.states, self.actions, self.log_probas, returns, advantages)
+        self.ppo_full_step(returns, advantages)
 
         if self.logs:
             self.writer.add_scalar("Rewards", torch.cat(self.rewards).mean().item(), self.number_updates)
-            self.writer.add_scalar("Values",  self.values.mean().item(), self.number_updates)
-            self.writer.add_scalar("Log std", self.actor.log_std.mean().item(), self.number_updates)
+            self.writer.add_scalar("Values",  self.values.mean().item(),             self.number_updates)
+            self.writer.add_scalar("Log std", self.actor.log_std.mean().item(),      self.number_updates)
 
         # Reset the attributes
         self.states     = []
@@ -515,7 +510,7 @@ class PPOAgent:
             return self.action_to_repeat.detach()
         
         self.state = self.convert_observation_to_input(observation)
-        state = torch.FloatTensor(self.state).to(self.device)
+        state      = torch.FloatTensor(self.state).to(self.device)
         
         # Get the estimate of our policy and our state's value
         dist  = self.actor(state)
