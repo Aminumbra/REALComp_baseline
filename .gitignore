@@ -99,7 +99,6 @@ celerybeat-schedule
 # Environments
 .env
 .venv
-env/
 venv/
 ENV/
 env.bak/
@@ -125,3 +124,5 @@ dmypy.json
 
 
 docs/
+*.pth
+realcomp/task/runs/

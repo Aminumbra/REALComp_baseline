@@ -27,8 +27,8 @@ def worker(remote, parent_remote, env_fn_wrapper):
             remote.send((env.observation_space, env.action_space))
         else:
             # General thing
-            method = getattr(env, cmd)
-            remote.send(method(data))
+            attr = getattr(env, cmd)
+            remote.send(attr)
 
 class VecEnv(object):
     """
@@ -153,3 +153,12 @@ class SubprocVecEnv(VecEnv):
             
     def __len__(self):
         return self.nenvs
+
+
+    def __getattr__(self, attr, *args):
+        print("Searching for attribute ", attr)
+        for remote in self.remotes:
+            remote.send((attr, args))
+        return np.stack([remote.recv() for remote in self.remotes])
+
+            
