@@ -24,15 +24,16 @@ def make_env(env_id):
 
         return _thunk
 
+num_envs = 4
 env_id = "REALComp-v0"
-envs   = [make_env(env_id) for e in range(4)]
+envs   = [make_env(env_id) for e in range(num_envs)]
 envs   = SubprocVecEnv(envs) # Wrapper simulating a threading situation, 1 env/Thread
 
 #################################################
 
 
 
-def demo_run(extrinsic_trials=10):      
+def demo_run(extrinsic_trials=10):
 
     env = gym.make('REALComp-v0')
     #controller = Controller(env.action_space)
@@ -47,11 +48,12 @@ def demo_run(extrinsic_trials=10):
                              horizon           = 64,
                              mini_batch_size   = 16,
                              frames_per_action = 30,
-                             init_wait         = 400,
+                             init_wait         = 120,
                              clip              = 0.2,
                              entropy_coeff     = 0.05,
                              log_std           = 0.,
                              use_parallel      = True,
+                             num_parallel      = num_envs,
                              logs              = False,
                              logs_dir          = "-robot")
 
@@ -62,14 +64,14 @@ def demo_run(extrinsic_trials=10):
     env.extrinsic_timesteps = 100 #10
 
     # render simulation on screen
-    env.render('human')
+    #env.render('human')
     
     
     # reset simulation
-    observation = envs.reset()  
-    reward = 0
-    reward_count = 0
-    done = False
+    observation = envs.reset()
+    
+    reward = [0] * num_envs
+    done   = [False] * num_envs
 
     objects_names = ["mustard", "tomato", "orange"]
     
@@ -83,7 +85,7 @@ def demo_run(extrinsic_trials=10):
 
     # intrinsic phase
     print("Starting intrinsic phase...")
-    while not done:
+    while not all(done):
 
         ######################
         # Display information

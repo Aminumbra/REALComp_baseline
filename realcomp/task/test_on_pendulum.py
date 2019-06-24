@@ -87,6 +87,7 @@ try:
         frame += 1
     
         action = controller.step(state, reward, done)
+        
         state, reward, done, _ = envs.step(action)
         
         if frame % 5000 == 0:

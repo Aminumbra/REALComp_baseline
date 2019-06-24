@@ -103,6 +103,7 @@ class PPOAgent:
                  entropy_coeff     = 0.1,
                  log_std           = -0.6,
                  use_parallel      = False,
+                 num_parallel      = 0,
                  logs              = False,
                  logs_dir          = ""):
 
@@ -150,6 +151,9 @@ class PPOAgent:
         use_parallel      : Bool. If you are using vectorized environments, set this to True, in order to reshape
         all the Tensors accordingly. Otherwise, set it to False.
 
+        num_parallel      : Int. Number of parallel workers. Used to reshape correctly the actions. If use_parallel is
+        False, this argument has no effect.
+
         logs              : Bool. If True, a tensorboardX writer will save relevant informations about the training.
 
         logs_dir          : Str. Comment appended to the name of the directory of the tensorboardX output.
@@ -164,6 +168,7 @@ class PPOAgent:
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
         self.use_parallel = use_parallel
+        self.num_parallel = num_parallel
         
         # Hyperparameters
 
@@ -227,11 +232,22 @@ class PPOAgent:
         ###################
         # To work with joints
 
-        joints  = torch.FloatTensor(observation["joint_positions"])
-        sensors = torch.FloatTensor(observation["touch_sensors"])
-        x       = torch.cat((joints, sensors, joints, sensors)) 
-        ###################
-        
+        if self.use_parallel:
+            list_obs = []
+            for obs in observation:
+                joints  = torch.FloatTensor(obs["joint_positions"])
+                sensors = torch.FloatTensor(obs["touch_sensors"])
+
+                curr_obs = torch.cat((joints, sensors, joints, sensors)).unsqueeze(0) #We concatenate twice to 'simulate' a goal
+                list_obs.append(curr_obs)
+
+            x = torch.cat(list_obs)
+                
+        else:
+            joints  = torch.FloatTensor(observation["joint_positions"])
+            sensors = torch.FloatTensor(observation["touch_sensors"])
+            x       = torch.cat((joints, sensors, joints, sensors))
+
         return x
 
 
@@ -372,7 +388,10 @@ class PPOAgent:
 
         if self.already_waited < self.init_wait:
             self.already_waited += 1
-            return torch.zeros(self.num_actions)
+            if self.use_parallel:
+                return torch.zeros(self.num_parallel, self.num_actions)
+            else:
+                return torch.zeros(self.num_actions)
 
         if self.num_repeated_action < self.frames_per_action:
             self.num_repeated_action += 1
@@ -439,10 +458,12 @@ class PPOAgent:
         Considers that we have made 'horizon' steps, and we got the
         associated rewards/states/goals/etc.
         Computes the returns, and updates the model.
-        """     
+        """
 
         # Now update
         # First, compute estimated advantages and returns
+
+        print("UPDATING !")
 
         next_state = torch.FloatTensor(self.state).to(self.device)
         next_dist  = self.actor(next_state)

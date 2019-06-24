@@ -26,7 +26,9 @@ def worker(remote, parent_remote, env_fn_wrapper):
         elif cmd == 'get_spaces':
             remote.send((env.observation_space, env.action_space))
         else:
-            raise NotImplementedError
+            # General thing
+            method = getattr(env, cmd)
+            remote.send(method(data))
 
 class VecEnv(object):
     """
