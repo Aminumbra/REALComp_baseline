@@ -8,6 +8,7 @@ import numpy as np
 import realcomp
 from realcomp.envs.realcomp_env import Goal
 import gym
+import pybullet
 
 print(realcomp)  # this is an hack because disable unused-imports does not work
 
@@ -37,7 +38,7 @@ def euclidean_distance(x, y):
 
 def make_env(env_id):
         def _thunk():
-            return gym.make(env_id)
+            return gym.make(env_id) 
 
         return _thunk
 
@@ -183,9 +184,6 @@ def update_reward(envs, frame, reward):
         distance_orange = euclidean_distance(envs.get_obj_pos("orange"), envs.get_part_pos("finger_10"))
 
         reward = 1 - (1. / (distance_orange + 1)) + 100 * had_contact  # Avoids division by Zero. Add an extra-reward for touching the orange
-
-        if any(reward > 50):
-            print("got reward")
 
     return reward
 
