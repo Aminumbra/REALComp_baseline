@@ -25,10 +25,29 @@ def worker(remote, parent_remote, env_fn_wrapper):
             break
         elif cmd == 'get_spaces':
             remote.send((env.observation_space, env.action_space))
+        elif cmd == 'get_contacts':
+            contacts = env.get_contacts()
+            remote.send(contacts)
+        elif cmd == 'get_obj_pos':
+            obj_pos = env.get_obj_pos(data)
+            remote.send(obj_pos)
+        elif cmd == 'get_part_pos':
+            part_pos = env.get_part_pos(data)
+            remote.send(part_pos)
         else:
-            # General thing
-            method = getattr(env, cmd)
-            remote.send(method(data))
+            # General thing.
+            # CALLS the method, does not return the function : no need to call it later on
+            # Not really satisfying, but might be a workaround to use some functions that are
+            # not implemented yet.
+            
+            attr = getattr(env, cmd)
+            if len(data) == 0:
+                if callable(attr):
+                    remote.send(attr())
+                else:
+                    remote.send(attr)
+            else:
+                remote.send(method(data))
 
 class VecEnv(object):
     """
@@ -153,3 +172,32 @@ class SubprocVecEnv(VecEnv):
             
     def __len__(self):
         return self.nenvs
+
+
+    def __getattr__(self, attr, *args):
+        print("Searching for attribute ", attr)
+        for remote in self.remotes:
+            remote.send((attr, args))
+        return np.stack([remote.recv() for remote in self.remotes])
+
+            
+
+
+class RobotVecEnv(SubprocVecEnv):
+    def __init__(self, envs_fn, spaces=None):
+        super(RobotVecEnv, self).__init__(envs_fn, spaces)
+
+    def get_contacts(self):
+        for remote in self.remotes:
+            remote.send(('get_contacts', None))
+        return np.stack([remote.recv() for remote in self.remotes])
+    
+    def get_obj_pos(self, obj):
+        for remote in self.remotes:
+            remote.send(('get_obj_pos', obj))
+        return np.stack([remote.recv() for remote in self.remotes])
+
+    def get_part_pos(self, part):
+        for remote in self.remotes:
+            remote.send(('get_part_pos', part))
+        return np.stack([remote.recv() for remote in self.remotes])
