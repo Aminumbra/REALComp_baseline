@@ -1,5 +1,5 @@
 import os
-import config
+from realcomp.task import config
 
 import gym
 import numpy as np

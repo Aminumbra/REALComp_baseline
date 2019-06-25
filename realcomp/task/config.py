@@ -29,6 +29,11 @@ if not DEBUG and HASGUI:
 if len(sys.argv) > 1:
     response = f'{sys.argv[1]}:{time.strftime("%Y_%m_%d-%H_%M_%S")}{os.getpid()}'
 
+if len(sys.argv) > 2:
+    model_to_load = f'{sys.argv[2]}'
+else:
+    model_to_load = ''
+
 if response is not None:
     experiment_name = response
 
@@ -41,9 +46,12 @@ print(f"USING {device}")
 
 render = False
 noop_steps = 120
-frames_per_action = 30
-intrinsic_frames = 1000
+frames_per_action = 5
+intrinsic_frames = 100000
 # render_but_no_render = True
 # wtcheat = True
 wtcheat = True
 save_every = False
+extrinsic_trials = 10
+num_envs = 8
+observations_to_stack = 1

@@ -1,9 +1,8 @@
-import UtilsTensorboard
-import config
 import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
+from realcomp.task import config
 from torch.distributions import Normal
 
 
@@ -99,8 +98,8 @@ class PPOAgent:
                  entropy_coeff=0.1,
                  log_std=-0.6,
                  use_parallel=False,
-                 num_parallel      = 0,
-                 logs              = False,
+                 num_parallel=0,
+                 logs=False,
                  logs_dir=""):
 
         """
@@ -186,6 +185,8 @@ class PPOAgent:
         self.actor = ModelActor(self.size_obs, self.num_actions, size_layers=size_layers, lr=actor_lr, log_std=log_std).to(config.device)
         self.critic = ModelCritic(self.size_obs, size_layers=size_layers, lr=critic_lr).to(config.device)
 
+        self.observations_history = collections.deque(maxlen=config.observations_to_stack)
+
         # Pseudo-memory to be able to update the policy
         self.frame = 0  # Used to know where we are compared to the horizon
         self.state = None
@@ -208,7 +209,8 @@ class PPOAgent:
         self.logs = logs
 
         if logs:
-            self.writer = UtilsTensorboard.writer(logs_dir)
+            # self.writer = UtilsTensorboard.writer(logs_dir)
+            self.writer = config.tensorboard
 
     ######################################################################
 
@@ -229,18 +231,18 @@ class PPOAgent:
         if self.use_parallel:
             list_obs = []
             for obs in observation:
-                joints  = torch.FloatTensor(obs["joint_positions"])
+                joints = torch.FloatTensor(obs["joint_positions"])
                 sensors = torch.FloatTensor(obs["touch_sensors"])
 
-                curr_obs = torch.cat((joints, sensors, joints, sensors)).unsqueeze(0) #We concatenate twice to 'simulate' a goal
+                curr_obs = torch.cat((joints, sensors, joints, sensors)).unsqueeze(0)  # We concatenate twice to 'simulate' a goal
                 list_obs.append(curr_obs)
 
             x = torch.cat(list_obs)
 
         else:
-            joints  = torch.FloatTensor(observation["joint_positions"])
+            joints = torch.FloatTensor(observation["joint_positions"])
             sensors = torch.FloatTensor(observation["touch_sensors"])
-            x       = torch.cat((joints, sensors, joints, sensors))
+            x = torch.cat((joints, sensors, joints, sensors))
 
         return x
 
@@ -265,10 +267,10 @@ class PPOAgent:
         self.actor.load_state_dict(checkpoint["model_actor"])
         self.critic.load_state_dict(checkpoint["model_critic"])
         self.actor.optimizer.load_state_dict(checkpoint["optim_actor"])
-        self.critic.load_state_dict(checkpoint["optim_critic"])
+        self.critic.optimizer.load_state_dict(checkpoint["optim_critic"])
 
-        self.actor.eval()
-        self.critic.eval()
+        # self.actor.eval()
+        # self.critic.eval()
 
     def soft_reset(self):
         self.frame = 0  # Used to know where we are compared to the horizon
@@ -292,17 +294,15 @@ class PPOAgent:
     # Functions used by the PPO algorithm in itself
 
     def compute_returns_gae(self, next_value):
-    
-        values = self.values + [next_value] #Can't simply append, as it would modify external values
+
+        values = self.values + [next_value]  # Can't simply append, as it would modify external values
 
         advantage = 0
         returns = []
 
         for step in reversed(range(len(self.rewards))):
-
-            delta     = self.rewards[step] + self.gamma * values[step + 1] * self.not_done[step] - values[step]
+            delta = self.rewards[step] + self.gamma * values[step + 1] * self.not_done[step] - values[step]
             advantage = delta + self.gamma * self.gae_lambda * self.not_done[step] * advantage
-
 
             returns.insert(0, advantage + values[step])
 
@@ -329,8 +329,7 @@ class PPOAgent:
         for k in range(self.epochs):
 
             for state, action, old_log_probas, return_, advantage in self.ppo_iterator(self.mini_batch_size, self.states, self.actions, self.log_probas, returns, advantages):
-                
-                dist  = self.actor(state)
+                dist = self.actor(state)
 
                 value = self.critic(state)
 
@@ -362,11 +361,11 @@ class PPOAgent:
                 self.critic.optimizer.step()
 
             if self.logs:
-                self.writer.add_scalar("Entropy", entropy.mean().item(), ppo_epochs * self.number_updates + k)
-                self.writer.add_scalar("Actor loss", actor_loss.mean().item(), ppo_epochs * self.number_updates + k)
-                self.writer.add_scalar("Critic loss", critic_loss.mean().item(), ppo_epochs * self.number_updates + k)
+                self.writer.add_scalar("train/entropy", entropy.mean().item(), self.epochs * self.number_updates + k)
+                self.writer.add_scalar("train/actor loss", actor_loss.mean().item(), self.epochs * self.number_updates + k)
+                self.writer.add_scalar("train/Critic loss", critic_loss.mean().item(), self.epochs * self.number_updates + k)
 
-    def step(self, observation, reward, done):
+    def step(self, observation, reward, done, test=False):
 
         if self.already_waited < self.init_wait:
             self.already_waited += 1
@@ -394,8 +393,20 @@ class PPOAgent:
         if self.frame == self.horizon:
             self.update()
 
-        self.state = self.convert_observation_to_input(observation)
-        state = torch.FloatTensor(self.state).to(self.device)
+        state_t = self.convert_observation_to_input(observation)
+
+        if not self.observations_history:
+            for _ in range(config.observations_to_stack - 1):
+                self.observations_history.append(state_t)
+        self.observations_history.append(state_t)
+
+        if len(self.observations_history) > 1:
+            state = torch.cat(tuple(self.observations_history), dim=1)
+        else:
+            state, = self.observations_history
+
+        state = torch.FloatTensor(state).to(self.device)
+        self.state = state
 
         # Get the estimate of our policy and our state's value
         dist = self.actor(state)
@@ -403,6 +414,9 @@ class PPOAgent:
 
         # Take action probabilistically
         # TODO TODO TODO : Check the REAL difference between sample & rsample
+        if test:
+            dist.scale /= 10
+
         action = dist.sample()
 
         # Compute the "log prob" of our policy
@@ -444,11 +458,11 @@ class PPOAgent:
         # Now update
         # First, compute estimated advantages and returns
 
-        next_state = torch.FloatTensor(self.state).to(self.device)
+        next_state = self.state
         next_dist = self.actor(next_state)
         next_value = self.critic(next_state)
 
-        returns    = self.compute_returns_gae(next_value)
+        returns = self.compute_returns_gae(next_value)
 
         # Detach the useful tensors
         self.log_probas = torch.cat(self.log_probas).detach()
@@ -468,9 +482,9 @@ class PPOAgent:
         self.ppo_full_step(returns, advantages)
 
         if self.logs:
-            self.writer.add_scalar("Rewards", torch.cat(self.rewards).mean().item(), self.number_updates)
-            self.writer.add_scalar("Values",  self.values.mean().item(),             self.number_updates)
-            self.writer.add_scalar("Log std", self.actor.log_std.mean().item(),      self.number_updates)
+            self.writer.add_scalar("train/Rewards", torch.cat(self.rewards).mean().item(), self.number_updates)
+            self.writer.add_scalar("train/Values", self.values.mean().item(), self.number_updates)
+            self.writer.add_scalar("train/Log std", self.actor.log_std.mean().item(), self.number_updates)
 
 
         # Reset the attributes
@@ -496,7 +510,7 @@ class PPOAgent:
 
         self.state = self.convert_observation_to_input(observation)
 
-        state      = torch.FloatTensor(self.state).to(self.device)
+        state = torch.FloatTensor(self.state).to(self.device)
 
         # Get the estimate of our policy and our state's value
         dist = self.actor(state)
