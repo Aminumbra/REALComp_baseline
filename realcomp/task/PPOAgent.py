@@ -235,7 +235,7 @@ class PPOAgent:
         if self.use_parallel:
             list_obs = []
             for obs in observation:
-                joints  = torch.FloatTensor(obs["joint_positions"])
+                joints = torch.FloatTensor(obs["joint_positions"])
                 sensors = torch.FloatTensor(obs["touch_sensors"])
 
                 curr_obs = torch.cat((joints, sensors)).unsqueeze(0)
@@ -244,12 +244,11 @@ class PPOAgent:
             x = torch.cat(list_obs)
 
         else:
-            joints  = torch.FloatTensor(observation["joint_positions"])
+            joints = torch.FloatTensor(observation["joint_positions"])
             sensors = torch.FloatTensor(observation["touch_sensors"])
             x       = torch.cat((joints, sensors))
 
         return x
-
 
     def compute_reward(self, observation):  # "Observation" is supposed to contain the goal in itself
 
@@ -336,8 +335,8 @@ class PPOAgent:
         for k in range(self.epochs):
 
             for state, action, old_log_probas, return_, advantage in self.ppo_iterator(self.mini_batch_size, self.states, self.actions, self.log_probas, returns, advantages):
-                
-                dist = self.actor(state)
+
+                dist  = self.actor(state)
 
                 value = self.critic(state)
 
@@ -470,7 +469,7 @@ class PPOAgent:
         next_dist = self.actor(next_state)
         next_value = self.critic(next_state)
 
-        returns = self.compute_returns_gae(next_value)
+        returns    = self.compute_returns_gae(next_value)
 
         # Detach the useful tensors
         self.log_probas = torch.cat(self.log_probas).detach()
@@ -518,7 +517,7 @@ class PPOAgent:
 
         self.state = self.convert_observation_to_input(observation)
 
-        state = torch.FloatTensor(self.state).to(self.device)
+        state      = torch.FloatTensor(self.state).to(self.device)
 
         # Get the estimate of our policy and our state's value
         dist = self.actor(state)

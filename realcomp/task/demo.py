@@ -49,8 +49,8 @@ envs   = VecNormalize(envs)
 
 
 def demo_run():
-    #env = gym.make('REALComp-v0')
-    #controller = Controller(env.action_space)
+    # env = gym.make('REALComp-v0')
+    # controller = Controller(env.action_space)
     controller = PPOAgent(action_space=envs.action_space,
                           size_obs=13 * config.observations_to_stack,
                           size_goal         = 0,
@@ -115,7 +115,7 @@ def demo_run():
     for k in range(config.extrinsic_trials):
 
         # reset simulation
-        observation = envs.reset()
+        observation = env.reset()
         reward = 0
         done = False
 
@@ -148,7 +148,7 @@ def showoff(controller):
         observation, reward, done, _ = env.step(action.cpu())
 
 
-def update_reward(envs, frame, reward, some_state):
+def update_reward(envs, frame, reward, some_state, goal=None):
     obj_init_pos = np.ndarray((3, len(envs), 3))
     obj_cur_pos = np.ndarray((3, len(envs), 3))
 
