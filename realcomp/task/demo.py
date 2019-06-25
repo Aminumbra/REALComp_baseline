@@ -1,13 +1,11 @@
 import inspect
-import tqdm
 import os
 
 import config
 import gym
 import numpy as np
 import realcomp
-from realcomp.envs.realcomp_env import Goal
-import gym
+import tqdm
 
 print(realcomp)  # this is an hack because disable unused-imports does not work
 
@@ -31,43 +29,42 @@ def euclidean_distance(x, y):
 ## Vectorizing several environments
 
 def make_env(env_id):
-        def _thunk():
-            return gym.make(env_id)
+    def _thunk():
+        return gym.make(env_id)
 
-        return _thunk
+    return _thunk
+
 
 num_envs = 4
 env_id = "REALComp-v0"
-envs   = [make_env(env_id) for e in range(num_envs)]
-envs   = SubprocVecEnv(envs) # Wrapper simulating a threading situation, 1 env/Thread
+envs = [make_env(env_id) for e in range(num_envs)]
+envs = SubprocVecEnv(envs)  # Wrapper simulating a threading situation, 1 env/Thread
+
 
 #################################################
 
 
-
 def demo_run(extrinsic_trials=10):
-
     env = gym.make('REALComp-v0')
-    #controller = Controller(env.action_space)
-    controller =  Controller(action_space      = env.action_space,
-                             size_obs          = 26,
-                             size_layers       = [64, 64],
-                             actor_lr          = 1e-4,
-                             critic_lr         = 1e-3,
-                             gamma             = 0.99,
-                             gae_lambda        = 0.95,
-                             epochs            = 10,
-                             horizon           = 64,
-                             mini_batch_size   = 16,
-                             frames_per_action=config.frames_per_action,
-                             init_wait=config.noop_steps,
-                             clip              = 0.2,
-                             entropy_coeff     = 0.05,
-                             log_std           = 0.,
-                             use_parallel      = True,
-                             num_parallel      = num_envs,
-                             logs              = False,
-                             logs_dir          = "-robot")
+    controller = Controller(action_space=env.action_space,
+                            size_obs=26,
+                            size_layers=[64, 64],
+                            actor_lr=1e-4,
+                            critic_lr=1e-3,
+                            gamma=0.99,
+                            gae_lambda=0.95,
+                            epochs=10,
+                            horizon=64,
+                            mini_batch_size=16,
+                            frames_per_action=config.frames_per_action,
+                            init_wait=config.noop_steps,
+                            clip=0.2,
+                            entropy_coeff=0.05,
+                            log_std=0.,
+                            use_parallel=False,
+                            num_parallel=1,
+                            logs=False,
+                            logs_dir="-robot")
 
     env.intrinsic_timesteps = 1e5  # 2000
     env.extrinsic_timesteps = 100  # 10
@@ -77,49 +74,41 @@ def demo_run(extrinsic_trials=10):
         env.render('human')
 
     # reset simulation
-    observation = envs.reset()
+    observation = env.reset()
 
     reward = [0] * num_envs
-    done   = [False] * num_envs
-
-    # objects_names = ["mustard", "tomato", "orange"]
-    
-    # obj_init_pos = np.ndarray((3, 3))
-    # obj_cur_pos  = np.ndarray((3, 3))
-
-    frame = 0
+    done = [False] * num_envs
 
     # intrinsic phase
     print("Starting intrinsic phase...")
     for frame in tqdm.tqdm(range(config.intrinsic_frames)):
-        if all(done):
-            break
+        # if isinstance(done, bool):
+        #     if done:
+        #         break
+        # else:
+        #     if all(done):
+        #         break
 
-        if frame and frame % 3000 == 0:
+        if config.save_every and frame and frame % config.save_every == 0:
             print("Frame (actual actions) : ", frame // controller.frames_per_action, "/", env.intrinsic_timesteps // controller.frames_per_action)
             controller.save_models("models.pth")
 
         action = controller.step(observation, reward, done)
         observation, reward, done, _ = env.step(action.cpu())
+        reward = update_reward(env, frame, reward)
 
         frame += 1
 
-        # reward = update_reward(env, frame, reward)
-        # if reward > 50:
-        #     reward_count += 1
-        #     print("High reward ", reward_count, "at frame ", frame // controller.frames_per_action)
+    controller.save_models("models.pth")
 
     if controller.logs:
         controller.writer.close()
 
-    # extrinsic phase
     print("Starting extrinsic phase...")
 
-    input("Press enter to test the model")
-
     env = gym.make('REALComp-v0')
-    if config.render:
-        env.render('human')
+    # if config.render:
+    env.render('human')
 
     for k in range(extrinsic_trials):
 

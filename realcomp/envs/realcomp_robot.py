@@ -27,10 +27,15 @@ class Kuka(URDFBasedRobot):
     num_kuka_joints = 7
     num_gripper_joints = 2
     num_touch_sensors = 4
-    eye_width = 320
-    eye_height = 240
-    
-    class ObsSpaces: 
+
+    if config.wtcheat:
+        eye_width = 1
+        eye_height = 1
+    else:
+        eye_width = 320
+        eye_height = 240
+
+    class ObsSpaces:
         JOINT_POSITIONS = "joint_positions"
         TOUCH_SENSORS = "touch_sensors"
         RETINA = "retina"
