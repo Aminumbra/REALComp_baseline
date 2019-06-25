@@ -17,8 +17,7 @@ parentdir = os.path.dirname(os.path.dirname(currentdir))
 os.sys.path.insert(0, parentdir)
 # from my_controller import MyController
 from PPOAgent import PPOAgent
-from MultiprocessEnv import SubprocVecEnv, RobotVecEnv
-from baselines.common.vec_env.vec_normalize import VecNormalize
+from MultiprocessEnv import SubprocVecEnv, RobotVecEnv, VecNormalize
 
 Controller = PPOAgent
 
@@ -46,7 +45,7 @@ def make_env(env_id):
 num_envs = 4
 env_id = "REALComp-v0"
 envs   = [make_env(env_id) for e in range(num_envs)]
-envs   = RobotVecEnv(envs) # Wrapper simulating a threading situation, 1 env/Thread
+envs   = VecNormalize(envs)
 
 #################################################
 

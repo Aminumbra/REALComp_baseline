@@ -147,7 +147,7 @@ class SubprocVecEnv(VecEnv):
         self.waiting = False
         obs, rews, dones, infos = zip(*results)
         return np.stack(obs), np.stack(rews), np.stack(dones), infos
-
+    
     def reset(self):
         for remote in self.remotes:
             remote.send(('reset', None))
@@ -168,8 +168,8 @@ class SubprocVecEnv(VecEnv):
             remote.send(('close', None))
         for p in self.ps:
             p.join()
-            self.closed = True
-            
+            self.closed = True            
+    
     def __len__(self):
         return self.nenvs
 
@@ -184,8 +184,8 @@ class SubprocVecEnv(VecEnv):
 
 
 class RobotVecEnv(SubprocVecEnv):
-    def __init__(self, envs_fn, spaces=None, keys=["joint_positions", "touch_sensors"]):
-        super(RobotVecEnv, self).__init__(envs_fn, spaces)
+    def __init__(self, env_fns, keys=["joint_positions", "touch_sensors"]):
+        super(RobotVecEnv, self).__init__(env_fns)
 
         self.keys = keys
 
@@ -194,6 +194,7 @@ class RobotVecEnv(SubprocVecEnv):
         for o in obs:
             converted_obs.append(np.concatenate([np.ravel(o[k]) for k in self.keys]))
         return np.stack(converted_obs)
+
 
     def get_contacts(self):
         for remote in self.remotes:
@@ -217,4 +218,56 @@ class RobotVecEnv(SubprocVecEnv):
         self.waiting = False
         obs, rews, dones, infos = zip(*results)
         return self.obs_to_array(obs), np.stack(rews), np.stack(dones), infos
+
+    def reset(self):
+        for remote in self.remotes:
+            remote.send(('reset', None))
+        return self.obs_to_array([remote.recv() for remote in self.remotes])
         
+
+
+
+class VecNormalize(RobotVecEnv):
+    """
+    A vectorized wrapper that normalizes the observations
+    and returns from an environment.
+    """
+
+    def __init__(self, env_fns, ob=True, ret=True, clipob=10., cliprew=10., gamma=0.99, epsilon=1e-8, use_tf=False):
+        RobotVecEnv.__init__(self, env_fns)
+        if use_tf:
+            from baselines.common.running_mean_std import TfRunningMeanStd
+            self.ob_rms = TfRunningMeanStd(shape=self.observation_space.shape, scope='ob_rms') if ob else None
+            self.ret_rms = TfRunningMeanStd(shape=(), scope='ret_rms') if ret else None
+        else:
+            from baselines.common.running_mean_std import RunningMeanStd
+            self.ob_rms = RunningMeanStd(shape=self.observation_space.shape) if ob else None
+            self.ret_rms = RunningMeanStd(shape=()) if ret else None
+        self.clipob = clipob
+        self.cliprew = cliprew
+        self.ret = np.zeros(self.num_envs)
+        self.gamma = gamma
+        self.epsilon = epsilon
+
+    def step_wait(self):
+        obs, rews, news, infos = super().step_wait()
+        self.ret = self.ret * self.gamma + rews
+        obs = self._obfilt(obs)
+        if self.ret_rms:
+            self.ret_rms.update(self.ret)
+            rews = np.clip(rews / np.sqrt(self.ret_rms.var + self.epsilon), -self.cliprew, self.cliprew)
+        self.ret[news] = 0.
+        return obs, rews, news, infos
+
+    def _obfilt(self, obs):
+        if self.ob_rms:
+            self.ob_rms.update(obs)
+            obs = np.clip((obs - self.ob_rms.mean) / np.sqrt(self.ob_rms.var + self.epsilon), -self.clipob, self.clipob)
+            return obs
+        else:
+            return obs
+
+    def reset(self):
+        self.ret = np.zeros(self.num_envs)
+        obs = super().reset()
+        return self._obfilt(obs)
