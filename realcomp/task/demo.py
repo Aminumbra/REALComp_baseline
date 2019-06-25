@@ -15,6 +15,8 @@ os.sys.path.insert(0, parentdir)
 # from my_controller import MyController
 from realcomp.task.PPOAgent import PPOAgent
 from MultiprocessEnv import RobotVecEnv
+from PPOAgent import PPOAgent
+from MultiprocessEnv import SubprocVecEnv, RobotVecEnv, VecNormalize
 
 objects_names = ["mustard", "tomato", "orange"]
 
@@ -39,18 +41,19 @@ def make_env(env_id):
 
 
 env_id = "REALComp-v0"
-envs = [make_env(env_id) for e in range(config.num_envs)]
-envs = RobotVecEnv(envs)  # Wrapper simulating a threading situation, 1 env/Thread
+envs   = [make_env(env_id) for e in range(config.num_envs)]
+envs   = VecNormalize(envs)
 
 
 #################################################
 
 
 def demo_run():
-    # env = gym.make('REALComp-v0')
-    # controller = Controller(env.action_space)
+    #env = gym.make('REALComp-v0')
+    #controller = Controller(env.action_space)
     controller = PPOAgent(action_space=envs.action_space,
-                          size_obs=26 * config.observations_to_stack,
+                          size_obs=13 * config.observations_to_stack,
+                          size_goal         = 0,
                           size_layers=[64, 64],
                           actor_lr=1e-4,
                           critic_lr=1e-3,
@@ -126,7 +129,8 @@ def demo_run():
 
             ##### Modif : action taken WITHOUT "Exploration Noise"
             action = controller.step_opt(observation, reward, done)
-            # for _ in range(config.frames_per_action):
+
+            # do action
             observation, reward, done, _ = env.step(action)
 
 
