@@ -298,10 +298,9 @@ class PPOAgent:
         advantage = 0
         returns = []
 
-
         for step in reversed(range(len(self.rewards))):
 
-            delta     = self.rewards[step] + self.gamma * self.values[step + 1] * self.not_done[step] - self.values[step]
+            delta     = self.rewards[step] + self.gamma * values[step + 1] * self.not_done[step] - values[step]
             advantage = delta + self.gamma * self.gae_lambda * self.not_done[step] * advantage
 
 
@@ -444,8 +443,6 @@ class PPOAgent:
 
         # Now update
         # First, compute estimated advantages and returns
-
-        print("UPDATING !")
 
         next_state = torch.FloatTensor(self.state).to(self.device)
         next_dist = self.actor(next_state)

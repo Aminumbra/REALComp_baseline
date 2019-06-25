@@ -39,7 +39,7 @@ tensorboard = tensorboardX.SummaryWriter(os.path.join('runs', experiment_name), 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"USING {device}")
 
-render = True
+render = False
 noop_steps = 120
 frames_per_action = 30
 intrinsic_frames = 10000
