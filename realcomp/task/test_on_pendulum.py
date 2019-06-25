@@ -21,29 +21,24 @@ def create_envs(env_id="Pendulum-v0", num_envs=16):
     
     env = gym.make(env_id) # current, testing env
 
-    discrete_action_space = isinstance(env.action_space, gym.spaces.discrete.Discrete)
-
     envs = [make_env(env_id) for e in range(num_envs)]
     envs = SubprocVecEnv(envs) # Wrapper simulating a threading situation, 1 env/Thread
 
     size_obs = envs.observation_space.shape[0]
 
-    if discrete_action_space:
-        num_actions = envs.action_space.n
-    else:
-        num_actions = envs.action_space.shape[0]
+    num_actions = envs.action_space.shape[0]
 
     print("Env name : ", env_id)
     print("Different elements per observation : ", size_obs)
     print("Number of actions : ", num_actions)
     print("Simulated environments : ", num_envs)
 
-    return env, envs, size_obs, num_actions, discrete_action_space, num_envs
+    return env, envs, size_obs, num_actions, num_envs
 
 # Run the function now, as several things are global variables
 # used later in the code
 
-env, envs, size_obs, num_actions, discrete_action_space, num_envs = create_envs(env_id="Pendulum-v0", num_envs=8)
+env, envs, size_obs, num_actions, num_envs = create_envs(env_id="Pendulum-v0", num_envs=8)
 
 ############################################
 
@@ -53,6 +48,7 @@ def convert_observation_to_input(obs):
 
 controller = Controller(action_space      = env.action_space,
                         size_obs          = size_obs,
+                        size_goal         = 0,
                         size_layers       = [64, 64],
                         actor_lr          = 1e-4,
                         critic_lr         = 1e-3,

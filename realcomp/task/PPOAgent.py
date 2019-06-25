@@ -84,7 +84,8 @@ class PPOAgent:
 
     def __init__(self,
                  action_space,
-                 size_obs=26,
+                 size_obs=13,
+                 size_goal = 0,
                  size_layers=[32, 32],
                  actor_lr=1e-4,
                  critic_lr=1e-3,
@@ -110,8 +111,9 @@ class PPOAgent:
 
         action_space      : gym.action_space. Action space of a given environment.
 
-        size_obs          : Int. Number of elements per observation. If you are using a goal-conditioned policy,
-        size_obs must be equal to "size(obs) + size(goal)"
+        size_obs          : Int. Number of elements per observation.
+
+        size_goal         : Int. Number of elements per goal.
 
         size_layers    : List of int. List of the number of neurons of each hidden layer of the neural network.
         The first layer (input) and the last layer (output) must not be part of this list.
@@ -156,7 +158,8 @@ class PPOAgent:
         """
 
         self.num_actions = action_space.shape[0]
-        self.size_obs = size_obs
+        self.size_obs    = size_obs
+        self.size_goal   = size_goal
 
         self.first_step = True
         self.device = config.device
@@ -232,7 +235,7 @@ class PPOAgent:
                 joints  = torch.FloatTensor(obs["joint_positions"])
                 sensors = torch.FloatTensor(obs["touch_sensors"])
 
-                curr_obs = torch.cat((joints, sensors, joints, sensors)).unsqueeze(0) #We concatenate twice to 'simulate' a goal
+                curr_obs = torch.cat((joints, sensors)).unsqueeze(0)
                 list_obs.append(curr_obs)
 
             x = torch.cat(list_obs)
@@ -240,10 +243,11 @@ class PPOAgent:
         else:
             joints  = torch.FloatTensor(observation["joint_positions"])
             sensors = torch.FloatTensor(observation["touch_sensors"])
-            x       = torch.cat((joints, sensors, joints, sensors))
+            x       = torch.cat((joints, sensors))
 
         return x
 
+    
     def compute_reward(self, observation):  # "Observation" is supposed to contain the goal in itself
 
         retina = torch.FloatTensor(observation["retina"])
@@ -366,6 +370,8 @@ class PPOAgent:
                 self.writer.add_scalar("Actor loss", actor_loss.mean().item(), ppo_epochs * self.number_updates + k)
                 self.writer.add_scalar("Critic loss", critic_loss.mean().item(), ppo_epochs * self.number_updates + k)
 
+                
+
     def step(self, observation, reward, done):
 
         if self.already_waited < self.init_wait:
@@ -394,7 +400,7 @@ class PPOAgent:
         if self.frame == self.horizon:
             self.update()
 
-        self.state = self.convert_observation_to_input(observation)
+        self.state = observation #self.convert_observation_to_input(observation)
         state = torch.FloatTensor(self.state).to(self.device)
 
         # Get the estimate of our policy and our state's value
@@ -433,6 +439,8 @@ class PPOAgent:
 
         action_detached = self.action_to_repeat.detach()
         return action_detached
+
+    
 
     def update(self):
         """

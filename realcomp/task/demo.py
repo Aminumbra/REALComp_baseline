@@ -18,6 +18,7 @@ os.sys.path.insert(0, parentdir)
 # from my_controller import MyController
 from PPOAgent import PPOAgent
 from MultiprocessEnv import SubprocVecEnv, RobotVecEnv
+from baselines.common.vec_env.vec_normalize import VecNormalize
 
 Controller = PPOAgent
 
@@ -56,7 +57,8 @@ def demo_run(extrinsic_trials=10):
     #env = gym.make('REALComp-v0')
     #controller = Controller(env.action_space)
     controller =  Controller(action_space      = envs.action_space,
-                             size_obs          = 26,
+                             size_obs          = 13,
+                             size_goal         = 0,
                              size_layers       = [64, 64],
                              actor_lr          = 1e-4,
                              critic_lr         = 1e-3,
@@ -101,7 +103,6 @@ def demo_run(extrinsic_trials=10):
             break
 
         if frame and frame % 3000 == 0:
-            print("Frame (actual actions) : ", frame // controller.frames_per_action, "/", config.intrinsic_frames // controller.frames_per_action)
             controller.save_models("models.pth")
 
         action = controller.step(observation, reward, done)
@@ -110,12 +111,11 @@ def demo_run(extrinsic_trials=10):
         frame += 1
 
         reward = update_reward(envs, frame, reward)
-        # if reward > 50:
-        #     reward_count += 1
-        #     print("High reward ", reward_count, "at frame ", frame // controller.frames_per_action)
 
     if controller.logs:
         controller.writer.close()
+
+        
 
     # extrinsic phase
     print("Starting extrinsic phase...")
@@ -151,9 +151,14 @@ def demo_run(extrinsic_trials=10):
             # rgb_array = env.render('rgb_array')
 
 
-def update_reward(envs, frame, reward):
+
+            
+
+def update_reward(envs, frame, reward, goal=None):
     obj_init_pos = np.ndarray((3, len(envs), 3))
     obj_cur_pos = np.ndarray((3, len(envs), 3))
+
+    objects = ["mustard", "orange", "tomato"]
 
     if frame == 0:
         pass
@@ -171,6 +176,7 @@ def update_reward(envs, frame, reward):
                 if "finger" in robot_part:  # We are checking if the 'fingers' touched something
                     objects_touched = contacts[robot_part]
                     if any(object_touched == "orange" for object_touched in objects_touched):
+                    #if any(object_touched == objects[goal] for object_touched in objects_touched): #Assumed 'goal' to be an integer ranging from 0 to 2
                         had_contact[i] = True
                         break
 
@@ -179,7 +185,7 @@ def update_reward(envs, frame, reward):
             obj_cur_pos[i] = envs.get_obj_pos(obj)
 
         # reward = 1 if (((obj_init_pos - obj_cur_pos).mean())**2 > 1e-6) else -1   # Reward for moving something. Observations should be images here
-        # reward = 1 if had_contact else 0   # Reward for touching something
+        # reward = had_contact   # Reward for touching something
 
         distance_orange = euclidean_distance(envs.get_obj_pos("orange"), envs.get_part_pos("finger_10"))
 

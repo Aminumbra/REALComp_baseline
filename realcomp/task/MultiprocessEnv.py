@@ -184,8 +184,16 @@ class SubprocVecEnv(VecEnv):
 
 
 class RobotVecEnv(SubprocVecEnv):
-    def __init__(self, envs_fn, spaces=None):
+    def __init__(self, envs_fn, spaces=None, keys=["joint_positions", "touch_sensors"]):
         super(RobotVecEnv, self).__init__(envs_fn, spaces)
+
+        self.keys = keys
+
+    def obs_to_array(self, obs):
+        converted_obs = []
+        for o in obs:
+            converted_obs.append(np.concatenate([np.ravel(o[k]) for k in self.keys]))
+        return np.stack(converted_obs)
 
     def get_contacts(self):
         for remote in self.remotes:
@@ -196,8 +204,17 @@ class RobotVecEnv(SubprocVecEnv):
         for remote in self.remotes:
             remote.send(('get_obj_pos', obj))
         return np.stack([remote.recv() for remote in self.remotes])
+    
 
     def get_part_pos(self, part):
         for remote in self.remotes:
             remote.send(('get_part_pos', part))
         return np.stack([remote.recv() for remote in self.remotes])
+
+
+    def step_wait(self):
+        results = [remote.recv() for remote in self.remotes]
+        self.waiting = False
+        obs, rews, dones, infos = zip(*results)
+        return self.obs_to_array(obs), np.stack(rews), np.stack(dones), infos
+        
