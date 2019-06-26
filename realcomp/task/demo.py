@@ -42,7 +42,7 @@ def make_env(env_id):
 
 env_id = "REALComp-v0"
 envs   = [make_env(env_id) for e in range(config.num_envs)]
-envs   = VecNormalize(envs)
+envs   = VecNormalize(envs, keys=["joint_positions", "touch_sensors"]) #Add 'retina' if needed 
 
 
 #################################################
@@ -53,6 +53,7 @@ def demo_run():
     # controller = Controller(env.action_space)
     controller = PPOAgent(action_space=envs.action_space,
                           size_obs=13 * config.observations_to_stack,
+                          size_pic=0,
                           size_goal         = 0,
                           size_layers=[64, 64],
                           actor_lr=1e-4,
@@ -92,7 +93,7 @@ def demo_run():
             if config.save_every and frame and frame % config.save_every == 0:
                 controller.save_models("models.pth")
 
-            action = controller.step(observation, reward, done, test=True)
+            action = controller.step(observation, reward, done, test=False)
 
             observation, reward, done, _ = envs.step(action.cpu())
             reward, had_contact, some_state = update_reward(envs, frame, reward, some_state)

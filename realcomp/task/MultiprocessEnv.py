@@ -181,7 +181,7 @@ class SubprocVecEnv(VecEnv):
         return np.stack([remote.recv() for remote in self.remotes])
 
             
-
+from PIL import Image
 
 class RobotVecEnv(SubprocVecEnv):
     def __init__(self, env_fns, keys=["joint_positions", "touch_sensors"]):
@@ -192,7 +192,14 @@ class RobotVecEnv(SubprocVecEnv):
     def obs_to_array(self, obs):
         converted_obs = []
         for o in obs:
-            converted_obs.append(np.concatenate([np.ravel(o[k]) for k in self.keys]))
+            converted_obs.append(np.concatenate([np.ravel(o[k]) for k in self.keys if k != "retina"]))
+
+            if "retina" in self.keys:
+                image = Image.fromarray(o["retina"])
+                image = image.convert('L')
+                image = np.ravel(image)
+                converted_obs[-1] = np.concatenate(converted_obs[-1], image)
+                
         return np.stack(converted_obs)
 
 
@@ -233,8 +240,8 @@ class VecNormalize(RobotVecEnv):
     and returns from an environment.
     """
 
-    def __init__(self, env_fns, ob=True, ret=True, clipob=10., cliprew=10., gamma=0.99, epsilon=1e-8, use_tf=False):
-        RobotVecEnv.__init__(self, env_fns)
+    def __init__(self, env_fns, keys=["joint_positions", "touch_sensors"], ob=True, ret=True, clipob=10., cliprew=10., gamma=0.99, epsilon=1e-8, use_tf=False):
+        RobotVecEnv.__init__(self, env_fns, keys=keys)
         if use_tf:
             from baselines.common.running_mean_std import TfRunningMeanStd
             self.ob_rms = TfRunningMeanStd(shape=self.observation_space.shape, scope='ob_rms') if ob else None

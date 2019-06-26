@@ -10,7 +10,7 @@ from torch.distributions import Normal
 class ModelActor(nn.Module):
 
     def __init__(self,
-                 size_obs=26,
+                 size_obs=13,
                  num_actions=9,  # Our robot : 9 angles
                  size_layers=[32, 32],
                  log_std=0.,
@@ -53,7 +53,7 @@ class ModelActor(nn.Module):
 
 class ModelCritic(nn.Module):
     def __init__(self,
-                 size_obs=26,
+                 size_obs=13,
                  size_layers=[32, 32],
                  lr=3e-3):
 
@@ -80,11 +80,37 @@ class ModelCritic(nn.Module):
         return x
 
 
+class CNN(nn.Module):
+
+    def __init__(self):
+        
+        super(CNN, self).__init__()
+        
+        self.layer1 = nn.Sequential(
+            nn.Conv2d(1, 16, kernel_size=5, stride=1, padding=2),
+            nn.ReLU(),
+            nn.MaxPool2d(kernel_size=2, stride=2))
+        
+        self.layer2 = nn.Sequential(
+            nn.Conv2d(16, 16, kernel_size=5, stride=1, padding=2),
+            nn.ReLU(),
+            nn.MaxPool2d(kernel_size=2, stride=2))
+
+    def forward(self, x):
+        x = self.layer1(x)
+        x = self.layer2(x)
+        x = torch.flatten(x)
+
+        return x
+
+        
+
 class PPOAgent:
 
     def __init__(self,
                  action_space,
                  size_obs=13*config.observations_to_stack,
+                 size_pic=0,
                  size_goal = 0,
                  size_layers=[32, 32],
                  actor_lr=1e-4,
@@ -112,6 +138,9 @@ class PPOAgent:
         action_space      : gym.action_space. Action space of a given environment.
 
         size_obs          : Int. Number of elements per observation.
+
+        size_pic          : Int. Number of pixels in the input image. If no image is given as input, size_pic must
+        be set to zero.
 
         size_goal         : Int. Number of elements per goal.
 
@@ -159,6 +188,7 @@ class PPOAgent:
 
         self.num_actions = action_space.shape[0]
         self.size_obs    = size_obs
+        self.size_pic    = size_pic
         self.size_goal   = size_goal
 
         self.first_step = True
@@ -186,8 +216,9 @@ class PPOAgent:
 
         # Models
 
-        self.actor = ModelActor(self.size_obs, self.num_actions, size_layers=size_layers, lr=actor_lr, log_std=log_std).to(config.device)
-        self.critic = ModelCritic(self.size_obs, size_layers=size_layers, lr=critic_lr).to(config.device)
+        self.cnn = CNN().to(config.device)
+        self.actor = ModelActor(self.size_obs + self.size_pic, self.num_actions, size_layers=size_layers, lr=actor_lr, log_std=log_std).to(config.device)
+        self.critic = ModelCritic(self.size_obs + self.size_pic, size_layers=size_layers, lr=critic_lr).to(config.device)
 
         self.observations_history = collections.deque(maxlen=config.observations_to_stack)
 
@@ -372,7 +403,7 @@ class PPOAgent:
                 self.writer.add_scalar("train/actor loss", actor_loss.mean().item(), self.epochs * self.number_updates + k)
                 self.writer.add_scalar("train/Critic loss", critic_loss.mean().item(), self.epochs * self.number_updates + k)
 
-    def step(self, observation, reward, done, test=False):
+    def step(self, observation, reward, done, test=False): # observation[, :size_obs] is joints+sensors, and observation[, size_obs:] is a flattened picture
 
         if self.already_waited < self.init_wait:
             self.already_waited += 1
@@ -400,6 +431,8 @@ class PPOAgent:
         if self.frame == self.horizon:
             self.update()
 
+
+        # TODO : Might need to change a few things if we use a CNN on only part of the stacked frames !!
         state_t = observation
 
         if not self.observations_history:
@@ -416,13 +449,20 @@ class PPOAgent:
         self.state = state
 
         # Get the estimate of our policy and our state's value
+
+        # Split into 2 different parts
+        # joints, picture = state[, :self.size_obs], state[, self.size_obs:]
+        # cnn_pic = self.cnn(picture)
+        # new_state = torch.cat((joints, cnn_pic))
+        # dist = self.actor(new_state)
+        # value = self.critic(new_state)
+        
         dist = self.actor(state)
         value = self.critic(state)
 
         # Take action probabilistically
-        # TODO TODO TODO : Check the REAL difference between sample & rsample
         if test:
-            dist.scale /= 10
+            dist.scale = dist.scale * 0.1
 
         action = dist.sample()
 
