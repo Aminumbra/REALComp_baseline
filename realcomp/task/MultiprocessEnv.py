@@ -197,8 +197,9 @@ class RobotVecEnv(SubprocVecEnv):
             if "retina" in self.keys:
                 image = Image.fromarray(o["retina"])
                 image = image.convert('L')
+                image = image.resize((45, 60))
                 image = np.ravel(image)
-                converted_obs[-1] = np.concatenate(converted_obs[-1], image)
+                converted_obs[-1] = np.concatenate((converted_obs[-1], image))
                 
         return np.stack(converted_obs)
 

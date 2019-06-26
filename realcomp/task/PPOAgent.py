@@ -17,7 +17,7 @@ class ModelActor(nn.Module):
                  lr=3e-4):
 
         super(ModelActor, self).__init__()
-
+        
         self.layers = nn.ModuleList()
         num_hidden = len(size_layers)
 
@@ -96,10 +96,12 @@ class CNN(nn.Module):
             nn.ReLU(),
             nn.MaxPool2d(kernel_size=2, stride=2))
 
+        self.optimizer = optim.Adam(self.parameters())
+
     def forward(self, x):
         x = self.layer1(x)
         x = self.layer2(x)
-        x = torch.flatten(x)
+        x = torch.flatten(x, 1)
 
         return x
 
@@ -367,9 +369,19 @@ class PPOAgent:
 
             for state, action, old_log_probas, return_, advantage in self.ppo_iterator(self.mini_batch_size, self.states, self.actions, self.log_probas, returns, advantages):
 
-                dist  = self.actor(state)
+                n_states = state.size(0)
+                
+                joints, picture = state[:, :self.size_obs], state[:, self.size_obs:]
+                picture = picture.reshape((n_states, 45, 60))
+                picture = picture.unsqueeze(1)
+                cnn_pic = self.cnn(picture)
+                new_state = torch.cat((joints, cnn_pic), 1)
+                dist = self.actor(new_state)
+                value = self.critic(new_state)
+                
+                # dist  = self.actor(state)
 
-                value = self.critic(state)
+                # value = self.critic(state)
 
                 entropy = dist.entropy().mean()
 
@@ -391,12 +403,16 @@ class PPOAgent:
                 critic_loss = ((return_ - value) ** 2).mean()
 
                 self.actor.optimizer.zero_grad()
+                self.cnn.optimizer.zero_grad()
                 actor_loss.backward(retain_graph=True)
                 self.actor.optimizer.step()
+                self.cnn.optimizer.step()
 
                 self.critic.optimizer.zero_grad()
+                self.cnn.optimizer.zero_grad()
                 critic_loss.backward()
                 self.critic.optimizer.step()
+                self.cnn.optimizer.step()
 
             if self.logs:
                 self.writer.add_scalar("train/entropy", entropy.mean().item(), self.epochs * self.number_updates + k)
@@ -449,16 +465,18 @@ class PPOAgent:
         self.state = state
 
         # Get the estimate of our policy and our state's value
-
-        # Split into 2 different parts
-        # joints, picture = state[, :self.size_obs], state[, self.size_obs:]
-        # cnn_pic = self.cnn(picture)
-        # new_state = torch.cat((joints, cnn_pic))
-        # dist = self.actor(new_state)
-        # value = self.critic(new_state)
         
-        dist = self.actor(state)
-        value = self.critic(state)
+        # Split into 2 different parts
+        joints, picture = state[:, :self.size_obs], state[:, self.size_obs:]
+        picture = picture.reshape((self.num_parallel, 45, 60)) # Tensor of correctly shaped pictures
+        picture = picture.unsqueeze(1)
+        cnn_pic = self.cnn(picture)
+        new_state = torch.cat((joints, cnn_pic), 1)
+        dist = self.actor(new_state)
+        value = self.critic(new_state)
+        
+        # dist = self.actor(state)
+        # value = self.critic(state)
 
         # Take action probabilistically
         if test:
@@ -506,8 +524,17 @@ class PPOAgent:
         # First, compute estimated advantages and returns
 
         next_state = self.state
-        next_dist = self.actor(next_state)
-        next_value = self.critic(next_state)
+
+        joints, picture = next_state[:, :self.size_obs], next_state[:, self.size_obs:]
+        picture = picture.reshape((self.num_parallel, 45, 60)) # Tensor of correctly shaped pictures
+        picture = picture.unsqueeze(1)
+        cnn_pic = self.cnn(picture)
+        new_state = torch.cat((joints, cnn_pic), 1)
+        next_dist = self.actor(new_state)
+        next_value = self.critic(new_state)
+        
+        # next_dist = self.actor(next_state)
+        # next_value = self.critic(next_state)
 
         returns    = self.compute_returns_gae(next_value)
 
