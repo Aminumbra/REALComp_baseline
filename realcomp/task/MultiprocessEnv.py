@@ -34,6 +34,12 @@ def worker(remote, parent_remote, env_fn_wrapper):
         elif cmd == 'get_part_pos':
             part_pos = env.get_part_pos(data)
             remote.send(part_pos)
+        elif cmd == 'render':
+            if data is not None:
+                env.render(data)
+            else:
+                env.render()
+
         else:
             # General thing.
             # CALLS the method, does not return the function : no need to call it later on
@@ -197,10 +203,11 @@ class RobotVecEnv(SubprocVecEnv):
             if "retina" in self.keys:
                 image = Image.fromarray(o["retina"])
                 image = image.convert('L')
-                image = image.resize((45, 60))
-                image = np.ravel(image)
-                converted_obs[-1] = np.concatenate((converted_obs[-1], image))
+                image = image.resize((60, 45)) # Width, then height
+                image = np.ravel(image) # Want a 1D-array
                 
+                converted_obs[-1] = np.concatenate((converted_obs[-1], image))
+
         return np.stack(converted_obs)
 
 
@@ -225,12 +232,19 @@ class RobotVecEnv(SubprocVecEnv):
         results = [remote.recv() for remote in self.remotes]
         self.waiting = False
         obs, rews, dones, infos = zip(*results)
+
         return self.obs_to_array(obs), np.stack(rews), np.stack(dones), infos
 
     def reset(self):
         for remote in self.remotes:
             remote.send(('reset', None))
         return self.obs_to_array([remote.recv() for remote in self.remotes])
+
+
+    def render(self, mode=None):
+        for remote in self.remotes:
+            remote.send(('render', mode))
+            break
         
 
 
@@ -247,6 +261,7 @@ class VecNormalize(RobotVecEnv):
             from baselines.common.running_mean_std import TfRunningMeanStd
             self.ob_rms = TfRunningMeanStd(shape=self.observation_space.shape, scope='ob_rms') if ob else None
             self.ret_rms = TfRunningMeanStd(shape=(), scope='ret_rms') if ret else None
+            
         else:
             from baselines.common.running_mean_std import RunningMeanStd
             self.ob_rms = RunningMeanStd(shape=self.observation_space.shape) if ob else None
@@ -268,9 +283,12 @@ class VecNormalize(RobotVecEnv):
         return obs, rews, news, infos
 
     def _obfilt(self, obs):
+        # Modified this function so it only normalizes the first 13 values of the observation !
         if self.ob_rms:
-            self.ob_rms.update(obs)
-            obs = np.clip((obs - self.ob_rms.mean) / np.sqrt(self.ob_rms.var + self.epsilon), -self.clipob, self.clipob)
+            trunc_obs = obs[:, :13]
+            self.ob_rms.update(trunc_obs)
+            trunc_obs = np.clip((trunc_obs - self.ob_rms.mean) / np.sqrt(self.ob_rms.var + self.epsilon), -self.clipob, self.clipob)
+            obs[:, :13] = trunc_obs
             return obs
         else:
             return obs

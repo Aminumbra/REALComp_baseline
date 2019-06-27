@@ -6,6 +6,8 @@ import torch.optim as optim
 from realcomp.task import config
 from torch.distributions import Normal
 
+from matplotlib import pyplot as plt
+
 
 class ModelActor(nn.Module):
 
@@ -99,8 +101,10 @@ class CNN(nn.Module):
         self.optimizer = optim.Adam(self.parameters())
 
     def forward(self, x):
+        
         x = self.layer1(x)
         x = self.layer2(x)
+
         x = torch.flatten(x, 1)
 
         return x
@@ -402,16 +406,16 @@ class PPOAgent:
                 # L_VF in the paper
                 critic_loss = ((return_ - value) ** 2).mean()
 
-                self.actor.optimizer.zero_grad()
                 self.cnn.optimizer.zero_grad()
-                actor_loss.backward(retain_graph=True)
+                
+                self.actor.optimizer.zero_grad()
+                actor_loss.backward(retain_graph=True) # Need to set retain_graph=True, as the CNN part is backprop' twice. 
                 self.actor.optimizer.step()
-                self.cnn.optimizer.step()
 
                 self.critic.optimizer.zero_grad()
-                self.cnn.optimizer.zero_grad()
                 critic_loss.backward()
                 self.critic.optimizer.step()
+                
                 self.cnn.optimizer.step()
 
             if self.logs:
@@ -466,9 +470,11 @@ class PPOAgent:
 
         # Get the estimate of our policy and our state's value
         
-        # Split into 2 different parts
+        # Split into 2 different part
+        
         joints, picture = state[:, :self.size_obs], state[:, self.size_obs:]
         picture = picture.reshape((self.num_parallel, 45, 60)) # Tensor of correctly shaped pictures
+
         picture = picture.unsqueeze(1)
         cnn_pic = self.cnn(picture)
         new_state = torch.cat((joints, cnn_pic), 1)

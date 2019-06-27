@@ -42,8 +42,8 @@ def make_env(env_id):
 
 env_id = "REALComp-v0"
 envs   = [make_env(env_id) for e in range(config.num_envs)]
-envs   = VecNormalize(envs, keys=["joint_positions", "touch_sensors", "retina"]) #Add 'retina' if needed 
-
+#envs   = VecNormalize(envs, keys=["joint_positions", "touch_sensors", "retina"]) #Add 'retina' if needed 
+envs = VecNormalize(envs, keys=["joint_positions", "touch_sensors", "retina"])
 
 #################################################
 
