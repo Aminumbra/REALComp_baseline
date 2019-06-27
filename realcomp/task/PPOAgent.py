@@ -84,28 +84,49 @@ class ModelCritic(nn.Module):
 
 class CNN(nn.Module):
 
-    def __init__(self):
+    def __init__(self, shape_pic=(45, 60, 3), size_output=256):
         
         super(CNN, self).__init__()
         
         self.layer1 = nn.Sequential(
-            nn.Conv2d(1, 16, kernel_size=5, stride=1, padding=2),
+            nn.Conv2d(shape_pic[2], 16, kernel_size=5, stride=1, padding=2),
+            nn.BatchNorm2d(16),
             nn.ReLU(),
             nn.MaxPool2d(kernel_size=2, stride=2))
         
         self.layer2 = nn.Sequential(
             nn.Conv2d(16, 16, kernel_size=5, stride=1, padding=2),
+            nn.BatchNorm2d(16),
             nn.ReLU(),
             nn.MaxPool2d(kernel_size=2, stride=2))
 
+        size_h = self.size_after_conv(shape_pic[0], 5, 1, 2)
+        size_h = self.size_after_conv(size_h, 2, 2, 0)
+        size_h = self.size_after_conv(size_h, 5, 1, 2)
+        size_h = self.size_after_conv(size_h, 2, 2, 0)
+
+        size_w = self.size_after_conv(shape_pic[1], 5, 1, 2)
+        size_w = self.size_after_conv(size_w, 2, 2, 0)
+        size_w = self.size_after_conv(size_w, 5, 1, 2)
+        size_w = self.size_after_conv(size_w, 2, 2, 0)
+        
+        self.fc = nn.Sequential(
+            nn.Linear(size_h * size_w * 16, size_output),
+            nn.ReLU())
+
         self.optimizer = optim.Adam(self.parameters())
 
+    def size_after_conv(self, init_size, kernel_size, stride, padding, dilation=1):
+        return int((init_size + 2*padding - dilation * (kernel_size - 1) - 1) / stride + 1)
+
     def forward(self, x):
-        
+
         x = self.layer1(x)
         x = self.layer2(x)
 
         x = torch.flatten(x, 1)
+
+        x = self.fc(x)
 
         return x
 
@@ -116,9 +137,10 @@ class PPOAgent:
     def __init__(self,
                  action_space,
                  size_obs=13*config.observations_to_stack,
-                 size_pic=0,
+                 shape_pic=(45, 60, 3),
                  size_goal = 0,
                  size_layers=[32, 32],
+                 size_cnn_output=256,
                  actor_lr=1e-4,
                  critic_lr=1e-3,
                  gamma=0.99,
@@ -145,13 +167,15 @@ class PPOAgent:
 
         size_obs          : Int. Number of elements per observation.
 
-        size_pic          : Int. Number of pixels in the input image. If no image is given as input, size_pic must
-        be set to zero.
+        shape_pic         : Int triplet. Shape of the (potentially downscaled) input image. The last element is
+        the number of channels (3 if RGB, 1 if grayscale).
 
         size_goal         : Int. Number of elements per goal.
 
         size_layers    : List of int. List of the number of neurons of each hidden layer of the neural network.
         The first layer (input) and the last layer (output) must not be part of this list.
+
+        size_cnn_output   : Int. Size of the output of the CNN, which ends with a fully connected linear layer.
 
         actor_lr          : Float. Learning rate for the actor network.
         
@@ -194,7 +218,7 @@ class PPOAgent:
 
         self.num_actions = action_space.shape[0]
         self.size_obs    = size_obs
-        self.size_pic    = size_pic
+        self.shape_pic   = shape_pic
         self.size_goal   = size_goal
 
         self.first_step = True
@@ -222,9 +246,9 @@ class PPOAgent:
 
         # Models
 
-        self.cnn = CNN().to(config.device)
-        self.actor = ModelActor(self.size_obs + self.size_pic, self.num_actions, size_layers=size_layers, lr=actor_lr, log_std=log_std).to(config.device)
-        self.critic = ModelCritic(self.size_obs + self.size_pic, size_layers=size_layers, lr=critic_lr).to(config.device)
+        self.cnn = CNN(shape_pic=shape_pic, size_output=size_cnn_output).to(config.device)
+        self.actor = ModelActor(self.size_obs + size_cnn_output, self.num_actions, size_layers=size_layers, lr=actor_lr, log_std=log_std).to(config.device)
+        self.critic = ModelCritic(self.size_obs + size_cnn_output, size_layers=size_layers, lr=critic_lr).to(config.device)
 
         self.observations_history = collections.deque(maxlen=config.observations_to_stack)
 
@@ -376,9 +400,12 @@ class PPOAgent:
                 n_states = state.size(0)
                 
                 joints, picture = state[:, :self.size_obs], state[:, self.size_obs:]
-                picture = picture.reshape((n_states, 45, 60))
-                picture = picture.unsqueeze(1)
+                picture = picture.reshape((n_states, self.shape_pic[0], self.shape_pic[1], self.shape_pic[2]))
+                picture = np.transpose(picture, (0, 3, 1, 2))
                 cnn_pic = self.cnn(picture)
+
+                #cnn_pic = cnn_pic * 0.
+                
                 new_state = torch.cat((joints, cnn_pic), 1)
                 dist = self.actor(new_state)
                 value = self.critic(new_state)
@@ -406,16 +433,27 @@ class PPOAgent:
                 # L_VF in the paper
                 critic_loss = ((return_ - value) ** 2).mean()
 
-                self.cnn.optimizer.zero_grad()
+                # self.cnn.optimizer.zero_grad()
                 
-                self.actor.optimizer.zero_grad()
-                actor_loss.backward(retain_graph=True) # Need to set retain_graph=True, as the CNN part is backprop' twice. 
-                self.actor.optimizer.step()
+                # self.actor.optimizer.zero_grad()
+                # actor_loss.backward() # Need to set retain_graph=True, as the CNN part is backprop' twice. 
 
-                self.critic.optimizer.zero_grad()
-                critic_loss.backward()
-                self.critic.optimizer.step()
+                # self.critic.optimizer.zero_grad()
+                # critic_loss.backward()
                 
+                # self.actor.optimizer.step()
+                # self.critic.optimizer.step()
+                # self.cnn.optimizer.step()
+
+                self.cnn.optimizer.zero_grad()
+                self.actor.optimizer.zero_grad()
+                self.critic.optimizer.zero_grad()
+
+                loss = actor_loss + critic_loss
+                loss.backward()
+
+                self.actor.optimizer.step()
+                self.critic.optimizer.step()
                 self.cnn.optimizer.step()
 
             if self.logs:
@@ -473,10 +511,12 @@ class PPOAgent:
         # Split into 2 different part
         
         joints, picture = state[:, :self.size_obs], state[:, self.size_obs:]
-        picture = picture.reshape((self.num_parallel, 45, 60)) # Tensor of correctly shaped pictures
-
-        picture = picture.unsqueeze(1)
+        picture = picture.reshape((self.num_parallel, self.shape_pic[0], self.shape_pic[1], self.shape_pic[2]))
+        picture = np.transpose(picture, (0, 3, 1, 2))
         cnn_pic = self.cnn(picture)
+
+        #cnn_pic = cnn_pic * 0.
+        
         new_state = torch.cat((joints, cnn_pic), 1)
         dist = self.actor(new_state)
         value = self.critic(new_state)
@@ -532,9 +572,12 @@ class PPOAgent:
         next_state = self.state
 
         joints, picture = next_state[:, :self.size_obs], next_state[:, self.size_obs:]
-        picture = picture.reshape((self.num_parallel, 45, 60)) # Tensor of correctly shaped pictures
-        picture = picture.unsqueeze(1)
+        picture = picture.reshape((self.num_parallel, self.shape_pic[0], self.shape_pic[1], self.shape_pic[2]))
+        picture = np.transpose(picture, (0, 3, 1, 2))
         cnn_pic = self.cnn(picture)
+
+        #cnn_pic = cnn_pic * 0.
+                        
         new_state = torch.cat((joints, cnn_pic), 1)
         next_dist = self.actor(new_state)
         next_value = self.critic(new_state)

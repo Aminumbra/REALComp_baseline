@@ -188,6 +188,7 @@ class SubprocVecEnv(VecEnv):
 
             
 from PIL import Image
+from matplotlib import pyplot as plt
 
 class RobotVecEnv(SubprocVecEnv):
     def __init__(self, env_fns, keys=["joint_positions", "touch_sensors"]):
@@ -202,9 +203,8 @@ class RobotVecEnv(SubprocVecEnv):
 
             if "retina" in self.keys:
                 image = Image.fromarray(o["retina"])
-                image = image.convert('L')
                 image = image.resize((60, 45)) # Width, then height
-                image = np.ravel(image) # Want a 1D-array
+                image = np.ravel(image) / 255. # Want a 1D-array, of floating-point numbers
                 
                 converted_obs[-1] = np.concatenate((converted_obs[-1], image))
 
@@ -297,3 +297,4 @@ class VecNormalize(RobotVecEnv):
         self.ret = np.zeros(self.num_envs)
         obs = super().reset()
         return self._obfilt(obs)
+

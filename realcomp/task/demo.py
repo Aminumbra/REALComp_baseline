@@ -42,8 +42,7 @@ def make_env(env_id):
 
 env_id = "REALComp-v0"
 envs   = [make_env(env_id) for e in range(config.num_envs)]
-#envs   = VecNormalize(envs, keys=["joint_positions", "touch_sensors", "retina"]) #Add 'retina' if needed 
-envs = VecNormalize(envs, keys=["joint_positions", "touch_sensors", "retina"])
+envs   = VecNormalize(envs, keys=["joint_positions", "touch_sensors", "retina"]) #Add 'retina' if needed 
 
 #################################################
 
@@ -53,12 +52,12 @@ def demo_run():
     # controller = Controller(env.action_space)
     controller = PPOAgent(action_space=envs.action_space,
                           size_obs=13 * config.observations_to_stack,
-                          size_pic=2640,
-                          size_goal         = 0,
+                          shape_pic=(45, 60, 3), # As received from the wrapper
                           size_layers=[64, 64],
+                          size_cnn_output=256,
                           actor_lr=1e-4,
                           critic_lr=1e-3,
-                          gamma=0.99,
+                          gamma=0.9,
                           gae_lambda=0.95,
                           epochs=10,
                           horizon=64,
@@ -106,6 +105,7 @@ def demo_run():
     config.tensorboard.close()
     print("Starting extrinsic phase...")
     if config.enjoy:
+        input("Press enter to test the agent and visualize its actions !")
         showoff(controller)
 
     # extrinsic phase
@@ -136,17 +136,19 @@ def demo_run():
 
 
 def showoff(controller):
-    env = gym.make('REALComp-v0')
-    # if config.render:
-    env.render('human')
+    envs   = [make_env(env_id)]
+    envs   = VecNormalize(envs, keys=["joint_positions", "touch_sensors", "retina"]) #Add 'retina' if needed 
+
+    envs.render('human')
+    
     controller.soft_reset()
-    controller.use_parallel = False
-    observation = env.reset()
+    controller.num_parallel = 1
+    observation = envs.reset()
     reward = None
     done = False
     for frame in tqdm.tqdm(range(10000)):
         action = controller.step(observation, reward, done)
-        observation, reward, done, _ = env.step(action.cpu())
+        observation, reward, done, _ = envs.step(action.cpu())
 
 
 def update_reward(envs, frame, reward, some_state, goal=None):
