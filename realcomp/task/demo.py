@@ -156,8 +156,31 @@ def showoff(controller):
         action = controller.step(observation, reward, done, test=True)
         observation, reward, done, _ = envs.step(action.cpu())
 
+        if get_contacts(envs, "orange")[1]:
+            observation = envs.reset()
+            done = np.ones(1)
+            
 
-def update_reward(envs, frame, reward, some_state, goal=None):
+
+def get_contacts(envs, target_object):
+    had_contact = np.full(len(envs), False)
+    envs_contacts = envs.get_contacts()
+    robot_useful_parts = ["finger_00", "finger_01", "finger_10", "finger_11"] # Only care about FINGER contacts
+
+    for i, contacts in enumerate(envs_contacts):
+        if contacts:
+            for robot_part in contacts:
+                if robot_part in robot_useful_parts:  # We are checking if the 'fingers' touched something
+                    objects_touched = contacts[robot_part]
+                    if any(object_touched == target_object for object_touched in objects_touched):
+                        had_contact[i] = True
+                        break
+
+    return had_contact
+
+    
+
+def update_reward(envs, frame, reward, some_state, goal=None, target_object="orange"):
     obj_init_pos = np.ndarray((3, len(envs), 3))
     obj_cur_pos = np.ndarray((3, len(envs), 3))
 
@@ -168,26 +191,16 @@ def update_reward(envs, frame, reward, some_state, goal=None):
         for i, obj in enumerate(objects_names):
             obj_init_pos[i] = envs.get_obj_pos(obj)  # We associate to the i-th object an array of length len(envs),  whose elements are positions (3-tuples)
 
-    had_contact = np.full(len(envs), False)
-    envs_contacts = envs.get_contacts()
-    robot_useful_parts = ["finger_00", "finger_01", "finger_10", "finger_11", "lbr_iiwa_link_7"] # 4 fingers + the last part of the robot (~ "its hand") 
-
-    for i, contacts in enumerate(envs_contacts):
-        if contacts:
-            for robot_part in contacts:
-                if robot_part in robot_useful_parts:  # We are checking if the 'fingers' touched something
-                    objects_touched = contacts[robot_part]
-                    if any(object_touched == "orange" for object_touched in objects_touched):
-                        had_contact[i] = True
-                        break
+    had_contact = get_contacts(envs, target_object)
+    robot_useful_parts = ["finger_00", "finger_01", "finger_10", "finger_11", "lbr_iiwa_link_7"] # 4 fingers + the last part of the robot (~ "its hand")
 
     if frame > config.noop_steps:
         for i, obj in enumerate(objects_names):
             obj_cur_pos[i] = envs.get_obj_pos(obj)
 
-        distance_orange = np.minimum.reduce([euclidean_distance(envs.get_obj_pos("orange"), envs.get_part_pos(robot_part)) for robot_part in robot_useful_parts])
+        distance_target = np.minimum.reduce([euclidean_distance(envs.get_obj_pos(target_object), envs.get_part_pos(robot_part)) for robot_part in robot_useful_parts])
         
-        closeness = np.power(distance_orange + 1e-6, -2)
+        closeness = np.power(distance_target + 1e-6, -2)
         reward = np.clip(closeness, 0, 10)
 
         some_state += reward
