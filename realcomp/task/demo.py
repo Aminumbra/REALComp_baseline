@@ -156,7 +156,7 @@ def showoff(controller):
         action = controller.step(observation, reward, done, test=True)
         observation, reward, done, _ = envs.step(action.cpu())
 
-        if get_contacts(envs, "orange")[1]:
+        if get_contacts(envs, "orange")[0]:
             observation = envs.reset()
             done = np.ones(1)
             
