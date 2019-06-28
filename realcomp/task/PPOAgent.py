@@ -84,7 +84,7 @@ class ModelCritic(nn.Module):
 
 class CNN(nn.Module):
 
-    def __init__(self, shape_pic=(45, 60, 3), size_output=256):
+    def __init__(self, shape_pic=(96, 144, 3), size_output=256):
         
         super(CNN, self).__init__()
         
@@ -100,12 +100,22 @@ class CNN(nn.Module):
             nn.ReLU(),
             nn.MaxPool2d(kernel_size=2, stride=2))
 
+        self.layer3 = nn.Sequential(
+            nn.Conv2d(16, 16, kernel_size=5, stride=1, padding=2),
+            nn.BatchNorm2d(16),
+            nn.ReLU(),
+            nn.MaxPool2d(kernel_size=2, stride=2))
+
         size_h = self.size_after_conv(shape_pic[0], 5, 1, 2)
+        size_h = self.size_after_conv(size_h, 2, 2, 0)
+        size_h = self.size_after_conv(size_h, 5, 1, 2)
         size_h = self.size_after_conv(size_h, 2, 2, 0)
         size_h = self.size_after_conv(size_h, 5, 1, 2)
         size_h = self.size_after_conv(size_h, 2, 2, 0)
 
         size_w = self.size_after_conv(shape_pic[1], 5, 1, 2)
+        size_w = self.size_after_conv(size_w, 2, 2, 0)
+        size_w = self.size_after_conv(size_w, 5, 1, 2)
         size_w = self.size_after_conv(size_w, 2, 2, 0)
         size_w = self.size_after_conv(size_w, 5, 1, 2)
         size_w = self.size_after_conv(size_w, 2, 2, 0)
@@ -121,11 +131,15 @@ class CNN(nn.Module):
 
     def forward(self, x):
 
+        # img = x[1].numpy()
+        # img = np.transpose(img, (1, 2, 0))
+        # plt.imshow(img)
+        # plt.show()
+
         x = self.layer1(x)
         x = self.layer2(x)
-
+        x = self.layer3(x)
         x = torch.flatten(x, 1)
-
         x = self.fc(x)
 
         return x
@@ -137,12 +151,13 @@ class PPOAgent:
     def __init__(self,
                  action_space,
                  size_obs=13*config.observations_to_stack,
-                 shape_pic=(45, 60, 3),
+                 shape_pic=(96, 144, 3),
                  size_goal = 0,
                  size_layers=[32, 32],
                  size_cnn_output=256,
                  actor_lr=1e-4,
                  critic_lr=1e-3,
+                 value_loss_coeff=0.1,
                  gamma=0.99,
                  gae_lambda=0.95,
                  epochs=10,
@@ -168,7 +183,8 @@ class PPOAgent:
         size_obs          : Int. Number of elements per observation.
 
         shape_pic         : Int triplet. Shape of the (potentially downscaled) input image. The last element is
-        the number of channels (3 if RGB, 1 if grayscale).
+        the number of channels (3 if RGB, 1 if grayscale). If no picture is given as input, shape_pic should be
+        None.
 
         size_goal         : Int. Number of elements per goal.
 
@@ -180,6 +196,10 @@ class PPOAgent:
         actor_lr          : Float. Learning rate for the actor network.
         
         critic_lr         : Float. Learning rate for the critic network.
+
+        value_loss_coeff  : Float. Coefficient of the Critic loss compared to the actor loss when backpropagating
+        through the common part of the network. The final loss function is :
+        Loss = Policy_loss + value_loss_coeff * Value_loss
 
         gamma             : Float. Discount rate when computing the discounted returns with GAE.
 
@@ -219,6 +239,10 @@ class PPOAgent:
         self.num_actions = action_space.shape[0]
         self.size_obs    = size_obs
         self.shape_pic   = shape_pic
+
+        if shape_pic is None:
+            size_cnn_output = 0
+        
         self.size_goal   = size_goal
 
         self.first_step = True
@@ -231,6 +255,8 @@ class PPOAgent:
 
         self.actor_lr = actor_lr
         self.critic_lr = critic_lr
+
+        self.value_loss_coeff = value_loss_coeff
 
         self.gamma = gamma
         self.gae_lambda = gae_lambda
@@ -246,7 +272,8 @@ class PPOAgent:
 
         # Models
 
-        self.cnn = CNN(shape_pic=shape_pic, size_output=size_cnn_output).to(config.device)
+        if shape_pic is not None:
+            self.cnn = CNN(shape_pic=shape_pic, size_output=size_cnn_output).to(config.device)
         self.actor = ModelActor(self.size_obs + size_cnn_output, self.num_actions, size_layers=size_layers, lr=actor_lr, log_std=log_std).to(config.device)
         self.critic = ModelCritic(self.size_obs + size_cnn_output, size_layers=size_layers, lr=critic_lr).to(config.device)
 
@@ -398,21 +425,20 @@ class PPOAgent:
             for state, action, old_log_probas, return_, advantage in self.ppo_iterator(self.mini_batch_size, self.states, self.actions, self.log_probas, returns, advantages):
 
                 n_states = state.size(0)
-                
-                joints, picture = state[:, :self.size_obs], state[:, self.size_obs:]
-                picture = picture.reshape((n_states, self.shape_pic[0], self.shape_pic[1], self.shape_pic[2]))
-                picture = np.transpose(picture, (0, 3, 1, 2))
-                cnn_pic = self.cnn(picture)
 
-                #cnn_pic = cnn_pic * 0.
-                
-                new_state = torch.cat((joints, cnn_pic), 1)
-                dist = self.actor(new_state)
-                value = self.critic(new_state)
-                
-                # dist  = self.actor(state)
+                if self.shape_pic is not None:
+                    joints, picture = state[:, :self.size_obs], state[:, self.size_obs:]
+                    picture = picture.reshape((n_states, self.shape_pic[0], self.shape_pic[1], self.shape_pic[2]))
+                    picture = np.transpose(picture, (0, 3, 1, 2))
+                    cnn_pic = self.cnn(picture)
 
-                # value = self.critic(state)
+                    new_state = torch.cat((joints, cnn_pic), 1)
+                    dist = self.actor(new_state)
+                    value = self.critic(new_state)
+
+                else:
+                    dist  = self.actor(state)
+                    value = self.critic(state)
 
                 entropy = dist.entropy().mean()
 
@@ -433,34 +459,29 @@ class PPOAgent:
                 # L_VF in the paper
                 critic_loss = ((return_ - value) ** 2).mean()
 
-                # self.cnn.optimizer.zero_grad()
-                
-                # self.actor.optimizer.zero_grad()
-                # actor_loss.backward() # Need to set retain_graph=True, as the CNN part is backprop' twice. 
-
-                # self.critic.optimizer.zero_grad()
-                # critic_loss.backward()
-                
-                # self.actor.optimizer.step()
-                # self.critic.optimizer.step()
-                # self.cnn.optimizer.step()
-
-                self.cnn.optimizer.zero_grad()
+                if self.shape_pic is not None:
+                    self.cnn.optimizer.zero_grad()
                 self.actor.optimizer.zero_grad()
                 self.critic.optimizer.zero_grad()
 
-                loss = actor_loss + critic_loss
+                loss = actor_loss + self.value_loss_coeff * critic_loss
                 loss.backward()
 
                 self.actor.optimizer.step()
                 self.critic.optimizer.step()
-                self.cnn.optimizer.step()
+
+                if self.shape_pic is not None:
+                    self.cnn.optimizer.step()
 
             if self.logs:
                 self.writer.add_scalar("train/entropy", entropy.mean().item(), self.epochs * self.number_updates + k)
                 self.writer.add_scalar("train/actor loss", actor_loss.mean().item(), self.epochs * self.number_updates + k)
                 self.writer.add_scalar("train/Critic loss", critic_loss.mean().item(), self.epochs * self.number_updates + k)
 
+                if self.shape_pic is not None:
+                    self.writer.add_scalar("train/Shared CNN loss", loss.mean().item(), self.epochs * self.number_updates + k)
+
+                    
     def step(self, observation, reward, done, test=False): # observation[, :size_obs] is joints+sensors, and observation[, size_obs:] is a flattened picture
 
         if self.already_waited < self.init_wait:
@@ -509,20 +530,20 @@ class PPOAgent:
         # Get the estimate of our policy and our state's value
         
         # Split into 2 different part
+        if self.shape_pic is not None:
         
-        joints, picture = state[:, :self.size_obs], state[:, self.size_obs:]
-        picture = picture.reshape((self.num_parallel, self.shape_pic[0], self.shape_pic[1], self.shape_pic[2]))
-        picture = np.transpose(picture, (0, 3, 1, 2))
-        cnn_pic = self.cnn(picture)
+            joints, picture = state[:, :self.size_obs], state[:, self.size_obs:]
+            picture = picture.reshape((self.num_parallel, self.shape_pic[0], self.shape_pic[1], self.shape_pic[2]))
+            picture = np.transpose(picture, (0, 3, 1, 2))
+            cnn_pic = self.cnn(picture)
 
-        #cnn_pic = cnn_pic * 0.
-        
-        new_state = torch.cat((joints, cnn_pic), 1)
-        dist = self.actor(new_state)
-        value = self.critic(new_state)
-        
-        # dist = self.actor(state)
-        # value = self.critic(state)
+            new_state = torch.cat((joints, cnn_pic), 1)
+            dist = self.actor(new_state)
+            value = self.critic(new_state)
+
+        else:
+            dist = self.actor(state)
+            value = self.critic(state)
 
         # Take action probabilistically
         if test:
@@ -559,6 +580,7 @@ class PPOAgent:
         action_detached = self.action_to_repeat.detach()
         return action_detached
 
+
     def update(self):
         """
         Considers that we have made 'horizon' steps, and we got the
@@ -571,19 +593,19 @@ class PPOAgent:
 
         next_state = self.state
 
-        joints, picture = next_state[:, :self.size_obs], next_state[:, self.size_obs:]
-        picture = picture.reshape((self.num_parallel, self.shape_pic[0], self.shape_pic[1], self.shape_pic[2]))
-        picture = np.transpose(picture, (0, 3, 1, 2))
-        cnn_pic = self.cnn(picture)
+        if self.shape_pic is not None:
+            joints, picture = next_state[:, :self.size_obs], next_state[:, self.size_obs:]
+            picture = picture.reshape((self.num_parallel, self.shape_pic[0], self.shape_pic[1], self.shape_pic[2]))
+            picture = np.transpose(picture, (0, 3, 1, 2))
+            cnn_pic = self.cnn(picture)
 
-        #cnn_pic = cnn_pic * 0.
-                        
-        new_state = torch.cat((joints, cnn_pic), 1)
-        next_dist = self.actor(new_state)
-        next_value = self.critic(new_state)
-        
-        # next_dist = self.actor(next_state)
-        # next_value = self.critic(next_state)
+            new_state = torch.cat((joints, cnn_pic), 1)
+            next_dist = self.actor(new_state)
+            next_value = self.critic(new_state)
+
+        else:
+            next_dist = self.actor(next_state)
+            next_value = self.critic(next_state)
 
         returns    = self.compute_returns_gae(next_value)
 

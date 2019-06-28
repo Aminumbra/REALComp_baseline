@@ -42,7 +42,7 @@ def make_env(env_id):
 
 env_id = "REALComp-v0"
 envs   = [make_env(env_id) for e in range(config.num_envs)]
-envs   = VecNormalize(envs, keys=["joint_positions", "touch_sensors", "retina"]) #Add 'retina' if needed 
+envs   = VecNormalize(envs, keys=["joint_positions", "touch_sensors"], ret=False) #Add 'retina' if needed 
 
 #################################################
 
@@ -52,11 +52,12 @@ def demo_run():
     # controller = Controller(env.action_space)
     controller = PPOAgent(action_space=envs.action_space,
                           size_obs=13 * config.observations_to_stack,
-                          shape_pic=(45, 60, 3), # As received from the wrapper
+                          shape_pic=None, #(96, 144, 3), # As received from the wrapper
                           size_layers=[64, 64],
-                          size_cnn_output=256,
+                          size_cnn_output=0,#256,
                           actor_lr=1e-4,
                           critic_lr=1e-3,
+                          value_loss_coeff=1.,
                           gamma=0.9,
                           gae_lambda=0.95,
                           epochs=10,
@@ -65,7 +66,7 @@ def demo_run():
                           frames_per_action=config.frames_per_action,
                           init_wait=config.noop_steps,
                           clip=0.2,
-                          entropy_coeff=0.05,
+                          entropy_coeff=0.01,
                           log_std=0.,
                           use_parallel=True,
                           num_parallel=config.num_envs,
@@ -78,8 +79,8 @@ def demo_run():
 
     # reset simulation
     observation = envs.reset()
-    reward = [0] * config.num_envs
-    done = [False] * config.num_envs
+    reward = np.zeros(config.num_envs)
+    done = np.zeros(config.num_envs)
 
     # intrinsic phase
     some_state = np.zeros_like(reward, dtype=np.float64)
@@ -99,6 +100,11 @@ def demo_run():
 
             config.tensorboard.add_scalar('intrinsic/rewards', reward.mean(), frame)
             config.tensorboard.add_scalar('intrinsic/did_it_touch', had_contact.max(), frame)
+
+            if config.reset_on_touch:
+                if any(had_contact):
+                    done = np.ones(config.num_envs)
+                    observation = envs.reset()
 
     controller.save_models("models.pth")
 
@@ -137,7 +143,7 @@ def demo_run():
 
 def showoff(controller):
     envs   = [make_env(env_id)]
-    envs   = VecNormalize(envs, keys=["joint_positions", "touch_sensors", "retina"]) #Add 'retina' if needed 
+    envs   = VecNormalize(envs, keys=["joint_positions", "touch_sensors"]) #Add 'retina' if needed 
 
     envs.render('human')
     
@@ -147,7 +153,7 @@ def showoff(controller):
     reward = None
     done = False
     for frame in tqdm.tqdm(range(10000)):
-        action = controller.step(observation, reward, done)
+        action = controller.step(observation, reward, done, test=True)
         observation, reward, done, _ = envs.step(action.cpu())
 
 
@@ -164,11 +170,12 @@ def update_reward(envs, frame, reward, some_state, goal=None):
 
     had_contact = np.full(len(envs), False)
     envs_contacts = envs.get_contacts()
+    robot_useful_parts = ["finger_00", "finger_01", "finger_10", "finger_11", "lbr_iiwa_link_7"] # 4 fingers + the last part of the robot (~ "its hand") 
 
     for i, contacts in enumerate(envs_contacts):
         if contacts:
             for robot_part in contacts:
-                if "finger" in robot_part:  # We are checking if the 'fingers' touched something
+                if robot_part in robot_useful_parts:  # We are checking if the 'fingers' touched something
                     objects_touched = contacts[robot_part]
                     if any(object_touched == "orange" for object_touched in objects_touched):
                         had_contact[i] = True
@@ -178,8 +185,9 @@ def update_reward(envs, frame, reward, some_state, goal=None):
         for i, obj in enumerate(objects_names):
             obj_cur_pos[i] = envs.get_obj_pos(obj)
 
-        distance_orange = euclidean_distance(envs.get_obj_pos("orange"), envs.get_part_pos("finger_10"))
-        closeness = np.power(distance_orange + 1e-6, -2)  #
+        distance_orange = np.minimum.reduce([euclidean_distance(envs.get_obj_pos("orange"), envs.get_part_pos(robot_part)) for robot_part in robot_useful_parts])
+        
+        closeness = np.power(distance_orange + 1e-6, -2)
         reward = np.clip(closeness, 0, 10)
 
         some_state += reward
@@ -197,4 +205,5 @@ def update_reward(envs, frame, reward, some_state, goal=None):
 if __name__ == "__main__":
     # os.system('git add .')
     # os.system('git commit -m f"{config.experiment_name}"')
+
     demo_run()

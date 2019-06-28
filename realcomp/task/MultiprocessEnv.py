@@ -202,8 +202,11 @@ class RobotVecEnv(SubprocVecEnv):
             converted_obs.append(np.concatenate([np.ravel(o[k]) for k in self.keys if k != "retina"]))
 
             if "retina" in self.keys:
-                image = Image.fromarray(o["retina"])
-                image = image.resize((60, 45)) # Width, then height
+
+                image = o["retina"]
+                image = image[60:185, 30:285, :]
+                image = Image.fromarray(image)
+                image = image.resize((144, 96)) # Width, then height
                 image = np.ravel(image) / 255. # Want a 1D-array, of floating-point numbers
                 
                 converted_obs[-1] = np.concatenate((converted_obs[-1], image))
@@ -235,7 +238,7 @@ class RobotVecEnv(SubprocVecEnv):
 
         return self.obs_to_array(obs), np.stack(rews), np.stack(dones), infos
 
-    def reset(self):
+    def reset(self):            
         for remote in self.remotes:
             remote.send(('reset', None))
         return self.obs_to_array([remote.recv() for remote in self.remotes])

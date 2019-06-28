@@ -47,7 +47,7 @@ print(f"USING {device}")
 render = False
 noop_steps = 120
 frames_per_action = 5
-intrinsic_frames = 120000
+intrinsic_frames = 80000
 # render_but_no_render = True
 # wtcheat = True
 enjoy = True
@@ -56,3 +56,4 @@ save_every = False
 extrinsic_trials = 10
 num_envs = 4
 observations_to_stack = 1
+reset_on_touch=True
