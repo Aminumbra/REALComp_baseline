@@ -1,12 +1,14 @@
-import numpy as np
 import collections
+
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
 from realcomp.task import config
 from torch.distributions import Normal
 
-from matplotlib import pyplot as plt
+
+# from matplotlib import pyplot as plt
 
 
 class ModelActor(nn.Module):
@@ -19,7 +21,7 @@ class ModelActor(nn.Module):
                  lr=3e-4):
 
         super(ModelActor, self).__init__()
-        
+
         self.layers = nn.ModuleList()
         num_hidden = len(size_layers)
 
@@ -85,15 +87,14 @@ class ModelCritic(nn.Module):
 class CNN(nn.Module):
 
     def __init__(self, shape_pic=(96, 144, 3), size_output=256):
-        
         super(CNN, self).__init__()
-        
+
         self.layer1 = nn.Sequential(
             nn.Conv2d(shape_pic[2], 16, kernel_size=5, stride=1, padding=2),
             nn.BatchNorm2d(16),
             nn.ReLU(),
             nn.MaxPool2d(kernel_size=2, stride=2))
-        
+
         self.layer2 = nn.Sequential(
             nn.Conv2d(16, 16, kernel_size=5, stride=1, padding=2),
             nn.BatchNorm2d(16),
@@ -119,7 +120,7 @@ class CNN(nn.Module):
         size_w = self.size_after_conv(size_w, 2, 2, 0)
         size_w = self.size_after_conv(size_w, 5, 1, 2)
         size_w = self.size_after_conv(size_w, 2, 2, 0)
-        
+
         self.fc = nn.Sequential(
             nn.Linear(size_h * size_w * 16, size_output),
             nn.ReLU())
@@ -127,10 +128,9 @@ class CNN(nn.Module):
         self.optimizer = optim.Adam(self.parameters())
 
     def size_after_conv(self, init_size, kernel_size, stride, padding, dilation=1):
-        return int((init_size + 2*padding - dilation * (kernel_size - 1) - 1) / stride + 1)
+        return int((init_size + 2 * padding - dilation * (kernel_size - 1) - 1) / stride + 1)
 
     def forward(self, x):
-
         # img = x[1].numpy()
         # img = np.transpose(img, (1, 2, 0))
         # plt.imshow(img)
@@ -144,15 +144,14 @@ class CNN(nn.Module):
 
         return x
 
-        
 
 class PPOAgent:
 
     def __init__(self,
                  action_space,
-                 size_obs=13*config.observations_to_stack,
+                 size_obs=13 * config.observations_to_stack,
                  shape_pic=(96, 144, 3),
-                 size_goal = 0,
+                 size_goal=0,
                  size_layers=[32, 32],
                  size_cnn_output=256,
                  actor_lr=1e-4,
@@ -237,13 +236,13 @@ class PPOAgent:
         """
 
         self.num_actions = action_space.shape[0]
-        self.size_obs    = size_obs
-        self.shape_pic   = shape_pic
+        self.size_obs = size_obs
+        self.shape_pic = shape_pic
 
         if shape_pic is None:
             size_cnn_output = 0
-        
-        self.size_goal   = size_goal
+
+        self.size_goal = size_goal
 
         self.first_step = True
         self.device = config.device
@@ -334,7 +333,7 @@ class PPOAgent:
         else:
             joints = torch.FloatTensor(observation["joint_positions"])
             sensors = torch.FloatTensor(observation["touch_sensors"])
-            x       = torch.cat((joints, sensors))
+            x = torch.cat((joints, sensors))
 
         return x
 
@@ -393,10 +392,8 @@ class PPOAgent:
         returns = []
 
         for step in reversed(range(len(self.rewards))):
-
-            delta     = self.rewards[step] + self.gamma * values[step + 1] * self.not_done[step] - values[step]
+            delta = self.rewards[step] + self.gamma * values[step + 1] * self.not_done[step] - values[step]
             advantage = delta + self.gamma * self.gae_lambda * self.not_done[step] * advantage
-
 
             returns.insert(0, advantage + values[step])
 
@@ -429,7 +426,7 @@ class PPOAgent:
                 if self.shape_pic is not None:
                     joints, picture = state[:, :self.size_obs], state[:, self.size_obs:]
                     picture = picture.reshape((n_states, self.shape_pic[0], self.shape_pic[1], self.shape_pic[2]))
-                    picture = np.transpose(picture, (0, 3, 1, 2))
+                    picture = picture.permute(0, 3, 1, 2)
                     cnn_pic = self.cnn(picture)
 
                     new_state = torch.cat((joints, cnn_pic), 1)
@@ -437,7 +434,7 @@ class PPOAgent:
                     value = self.critic(new_state)
 
                 else:
-                    dist  = self.actor(state)
+                    dist = self.actor(state)
                     value = self.critic(state)
 
                 entropy = dist.entropy().mean()
@@ -453,7 +450,6 @@ class PPOAgent:
 
                 # L_CLIP in the paper
                 actor_loss = - torch.min(estimate_1, estimate_2).mean()  # We consider the opposite, as we perform gradient ASCENT
-
                 actor_loss -= self.entropy_coeff * entropy
 
                 # L_VF in the paper
@@ -481,8 +477,7 @@ class PPOAgent:
                 if self.shape_pic is not None:
                     self.writer.add_scalar("train/Shared CNN loss", loss.mean().item(), self.epochs * self.number_updates + k)
 
-                    
-    def step(self, observation, reward, done, test=False): # observation[, :size_obs] is joints+sensors, and observation[, size_obs:] is a flattened picture
+    def step(self, observation, reward, done, test=False):  # observation[, :size_obs] is joints+sensors, and observation[, size_obs:] is a flattened picture
 
         if self.already_waited < self.init_wait:
             self.already_waited += 1
@@ -510,7 +505,6 @@ class PPOAgent:
         if self.frame == self.horizon:
             self.update()
 
-
         # TODO : Might need to change a few things if we use a CNN on only part of the stacked frames !!
         state_t = observation
 
@@ -528,13 +522,14 @@ class PPOAgent:
         self.state = state
 
         # Get the estimate of our policy and our state's value
-        
+
         # Split into 2 different part
         if self.shape_pic is not None:
-        
+
             joints, picture = state[:, :self.size_obs], state[:, self.size_obs:]
             picture = picture.reshape((self.num_parallel, self.shape_pic[0], self.shape_pic[1], self.shape_pic[2]))
-            picture = np.transpose(picture, (0, 3, 1, 2))
+            # picture = np.transpose(picture, (0, 3, 1, 2))
+            picture = picture.permute(0, 3, 1, 2)
             cnn_pic = self.cnn(picture)
 
             new_state = torch.cat((joints, cnn_pic), 1)
@@ -580,7 +575,6 @@ class PPOAgent:
         action_detached = self.action_to_repeat.detach()
         return action_detached
 
-
     def update(self):
         """
         Considers that we have made 'horizon' steps, and we got the
@@ -596,7 +590,7 @@ class PPOAgent:
         if self.shape_pic is not None:
             joints, picture = next_state[:, :self.size_obs], next_state[:, self.size_obs:]
             picture = picture.reshape((self.num_parallel, self.shape_pic[0], self.shape_pic[1], self.shape_pic[2]))
-            picture = np.transpose(picture, (0, 3, 1, 2))
+            picture = picture.permute(0, 3, 1, 2)
             cnn_pic = self.cnn(picture)
 
             new_state = torch.cat((joints, cnn_pic), 1)
@@ -607,7 +601,7 @@ class PPOAgent:
             next_dist = self.actor(next_state)
             next_value = self.critic(next_state)
 
-        returns    = self.compute_returns_gae(next_value)
+        returns = self.compute_returns_gae(next_value)
 
         # Detach the useful tensors
         self.log_probas = torch.cat(self.log_probas).detach()
@@ -630,7 +624,6 @@ class PPOAgent:
             self.writer.add_scalar("train/Rewards", torch.cat(self.rewards).mean().item(), self.number_updates)
             self.writer.add_scalar("train/Values", self.values.mean().item(), self.number_updates)
             self.writer.add_scalar("train/Log std", self.actor.log_std.mean().item(), self.number_updates)
-
 
         # Reset the attributes
         self.states = []
@@ -655,7 +648,7 @@ class PPOAgent:
 
         self.state = self.convert_observation_to_input(observation)
 
-        state      = torch.FloatTensor(self.state).to(self.device)
+        state = torch.FloatTensor(self.state).to(self.device)
 
         # Get the estimate of our policy and our state's value
         dist = self.actor(state)

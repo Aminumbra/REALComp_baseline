@@ -56,4 +56,9 @@ save_every = False
 extrinsic_trials = 10
 num_envs = 4
 observations_to_stack = 1
-reset_on_touch=True
+reset_on_touch = True
+image_shape = (60, 45)
+ludicrous_speed = True
+
+if DEBUG:
+    noop_steps = 1

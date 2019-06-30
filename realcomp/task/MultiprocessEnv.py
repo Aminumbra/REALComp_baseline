@@ -1,8 +1,9 @@
-#This code is from openai baseline
-#https://github.com/openai/baselines/tree/master/baselines/common/vec_env
+# This code is from openai baseline
+# https://github.com/openai/baselines/tree/master/baselines/common/vec_env
+from multiprocessing import Process, Pipe
 
 import numpy as np
-from multiprocessing import Process, Pipe
+
 
 def worker(remote, parent_remote, env_fn_wrapper):
     parent_remote.close()
@@ -45,7 +46,7 @@ def worker(remote, parent_remote, env_fn_wrapper):
             # CALLS the method, does not return the function : no need to call it later on
             # Not really satisfying, but might be a workaround to use some functions that are
             # not implemented yet.
-            
+
             attr = getattr(env, cmd)
             if len(data) == 0:
                 if callable(attr):
@@ -55,10 +56,12 @@ def worker(remote, parent_remote, env_fn_wrapper):
             else:
                 remote.send(method(data))
 
+
 class VecEnv(object):
     """
     An abstract asynchronous, vectorized environment.
     """
+
     def __init__(self, num_envs, observation_space, action_space):
         self.num_envs = num_envs
         self.observation_space = observation_space
@@ -106,21 +109,24 @@ class VecEnv(object):
         self.step_async(actions)
         return self.step_wait()
 
-    
+
 class CloudpickleWrapper(object):
     """
     Uses cloudpickle to serialize contents (otherwise multiprocessing tries to use pickle)
     """
+
     def __init__(self, x):
         self.x = x
+
     def __getstate__(self):
         import cloudpickle
         return cloudpickle.dumps(self.x)
+
     def __setstate__(self, ob):
         import pickle
         self.x = pickle.loads(ob)
 
-        
+
 class SubprocVecEnv(VecEnv):
     def __init__(self, env_fns, spaces=None):
         """
@@ -132,9 +138,9 @@ class SubprocVecEnv(VecEnv):
         self.nenvs = nenvs
         self.remotes, self.work_remotes = zip(*[Pipe() for _ in range(nenvs)])
         self.ps = [Process(target=worker, args=(work_remote, remote, CloudpickleWrapper(env_fn)))
-            for (work_remote, remote, env_fn) in zip(self.work_remotes, self.remotes, env_fns)]
+                   for (work_remote, remote, env_fn) in zip(self.work_remotes, self.remotes, env_fns)]
         for p in self.ps:
-            p.daemon = True # if the main process crashes, we should not cause things to hang
+            p.daemon = True  # if the main process crashes, we should not cause things to hang
             p.start()
         for remote in self.work_remotes:
             remote.close()
@@ -153,7 +159,7 @@ class SubprocVecEnv(VecEnv):
         self.waiting = False
         obs, rews, dones, infos = zip(*results)
         return np.stack(obs), np.stack(rews), np.stack(dones), infos
-    
+
     def reset(self):
         for remote in self.remotes:
             remote.send(('reset', None))
@@ -168,17 +174,16 @@ class SubprocVecEnv(VecEnv):
         if self.closed:
             return
         if self.waiting:
-            for remote in self.remotes:            
+            for remote in self.remotes:
                 remote.recv()
         for remote in self.remotes:
             remote.send(('close', None))
         for p in self.ps:
             p.join()
-            self.closed = True            
-    
+            self.closed = True
+
     def __len__(self):
         return self.nenvs
-
 
     def __getattr__(self, attr, *args):
         print("Searching for attribute ", attr)
@@ -186,9 +191,9 @@ class SubprocVecEnv(VecEnv):
             remote.send((attr, args))
         return np.stack([remote.recv() for remote in self.remotes])
 
-            
+
 from PIL import Image
-from matplotlib import pyplot as plt
+
 
 class RobotVecEnv(SubprocVecEnv):
     def __init__(self, env_fns, keys=["joint_positions", "touch_sensors"]):
@@ -202,34 +207,30 @@ class RobotVecEnv(SubprocVecEnv):
             converted_obs.append(np.concatenate([np.ravel(o[k]) for k in self.keys if k != "retina"]))
 
             if "retina" in self.keys:
-
                 image = o["retina"]
                 image = image[60:185, 30:285, :]
                 image = Image.fromarray(image)
-                image = image.resize((144, 96)) # Width, then height
-                image = np.ravel(image) / 255. # Want a 1D-array, of floating-point numbers
-                
+                image = image.resize((144, 96))  # Width, then height
+                image = np.ravel(image) / 255.  # Want a 1D-array, of floating-point numbers
+
                 converted_obs[-1] = np.concatenate((converted_obs[-1], image))
 
         return np.stack(converted_obs)
-
 
     def get_contacts(self):
         for remote in self.remotes:
             remote.send(('get_contacts', None))
         return np.stack([remote.recv() for remote in self.remotes])
-    
+
     def get_obj_pos(self, obj):
         for remote in self.remotes:
             remote.send(('get_obj_pos', obj))
         return np.stack([remote.recv() for remote in self.remotes])
-    
 
     def get_part_pos(self, part):
         for remote in self.remotes:
             remote.send(('get_part_pos', part))
         return np.stack([remote.recv() for remote in self.remotes])
-
 
     def step_wait(self):
         results = [remote.recv() for remote in self.remotes]
@@ -238,18 +239,15 @@ class RobotVecEnv(SubprocVecEnv):
 
         return self.obs_to_array(obs), np.stack(rews), np.stack(dones), infos
 
-    def reset(self):            
+    def reset(self):
         for remote in self.remotes:
             remote.send(('reset', None))
         return self.obs_to_array([remote.recv() for remote in self.remotes])
-
 
     def render(self, mode=None):
         for remote in self.remotes:
             remote.send(('render', mode))
             break
-        
-
 
 
 class VecNormalize(RobotVecEnv):
@@ -264,7 +262,7 @@ class VecNormalize(RobotVecEnv):
             from baselines.common.running_mean_std import TfRunningMeanStd
             self.ob_rms = TfRunningMeanStd(shape=self.observation_space.shape, scope='ob_rms') if ob else None
             self.ret_rms = TfRunningMeanStd(shape=(), scope='ret_rms') if ret else None
-            
+
         else:
             from baselines.common.running_mean_std import RunningMeanStd
             self.ob_rms = RunningMeanStd(shape=self.observation_space.shape) if ob else None
@@ -300,4 +298,3 @@ class VecNormalize(RobotVecEnv):
         self.ret = np.zeros(self.num_envs)
         obs = super().reset()
         return self._obfilt(obs)
-

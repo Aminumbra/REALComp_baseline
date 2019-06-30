@@ -67,6 +67,7 @@ To install the REAL Competition Starting Kit on windows in the anaconda envirome
 The environment is a standard gym environment and can be called alone as shown here:
 
 ```python
+import realcomp
 env = gym.make('REALComp-v0')
 
 observation = env.reset()  

@@ -14,9 +14,8 @@ parentdir = os.path.dirname(os.path.dirname(currentdir))
 os.sys.path.insert(0, parentdir)
 # from my_controller import MyController
 from realcomp.task.PPOAgent import PPOAgent
-from MultiprocessEnv import RobotVecEnv
 from PPOAgent import PPOAgent
-from MultiprocessEnv import SubprocVecEnv, RobotVecEnv, VecNormalize
+from MultiprocessEnv import VecNormalize
 
 objects_names = ["mustard", "tomato", "orange"]
 
@@ -41,8 +40,9 @@ def make_env(env_id):
 
 
 env_id = "REALComp-v0"
-envs   = [make_env(env_id) for e in range(config.num_envs)]
-envs   = VecNormalize(envs, keys=["joint_positions", "touch_sensors"], ret=False) #Add 'retina' if needed 
+envs = [make_env(env_id) for e in range(config.num_envs)]
+envs = VecNormalize(envs, keys=["joint_positions", "touch_sensors", "retina"], ret=False)  # Add 'retina' if needed
+
 
 #################################################
 
@@ -52,9 +52,9 @@ def demo_run():
     # controller = Controller(env.action_space)
     controller = PPOAgent(action_space=envs.action_space,
                           size_obs=13 * config.observations_to_stack,
-                          shape_pic=None, #(96, 144, 3), # As received from the wrapper
+                          shape_pic=(96, 144, 3),  # As received from the wrapper
                           size_layers=[64, 64],
-                          size_cnn_output=0,#256,
+                          size_cnn_output=256,
                           actor_lr=1e-4,
                           critic_lr=1e-3,
                           value_loss_coeff=1.,
@@ -90,6 +90,7 @@ def demo_run():
     else:
         print("Starting intrinsic phase...")
         for frame in tqdm.tqdm(range(config.intrinsic_frames // config.num_envs)):
+            # time.sleep(0.05)
             if config.save_every and frame and frame % config.save_every == 0:
                 controller.save_models("models.pth")
 
@@ -142,11 +143,11 @@ def demo_run():
 
 
 def showoff(controller):
-    envs   = [make_env(env_id)]
-    envs   = VecNormalize(envs, keys=["joint_positions", "touch_sensors"]) #Add 'retina' if needed 
+    envs = [make_env(env_id)]
+    envs = VecNormalize(envs, keys=["joint_positions", "touch_sensors"])  # Add 'retina' if needed
 
     envs.render('human')
-    
+
     controller.soft_reset()
     controller.num_parallel = 1
     observation = envs.reset()
@@ -159,13 +160,12 @@ def showoff(controller):
         if get_contacts(envs, "orange")[0]:
             observation = envs.reset()
             done = np.ones(1)
-            
 
 
 def get_contacts(envs, target_object):
     had_contact = np.full(len(envs), False)
     envs_contacts = envs.get_contacts()
-    robot_useful_parts = ["finger_00", "finger_01", "finger_10", "finger_11"] # Only care about FINGER contacts
+    robot_useful_parts = ["finger_00", "finger_01", "finger_10", "finger_11"]  # Only care about FINGER contacts
 
     for i, contacts in enumerate(envs_contacts):
         if contacts:
@@ -178,7 +178,6 @@ def get_contacts(envs, target_object):
 
     return had_contact
 
-    
 
 def update_reward(envs, frame, reward, some_state, goal=None, target_object="orange"):
     obj_init_pos = np.ndarray((3, len(envs), 3))
@@ -192,14 +191,14 @@ def update_reward(envs, frame, reward, some_state, goal=None, target_object="ora
             obj_init_pos[i] = envs.get_obj_pos(obj)  # We associate to the i-th object an array of length len(envs),  whose elements are positions (3-tuples)
 
     had_contact = get_contacts(envs, target_object)
-    robot_useful_parts = ["finger_00", "finger_01", "finger_10", "finger_11", "lbr_iiwa_link_7"] # 4 fingers + the last part of the robot (~ "its hand")
+    robot_useful_parts = ["finger_00", "finger_01", "finger_10", "finger_11", "lbr_iiwa_link_7"]  # 4 fingers + the last part of the robot (~ "its hand")
 
     if frame > config.noop_steps:
         for i, obj in enumerate(objects_names):
             obj_cur_pos[i] = envs.get_obj_pos(obj)
 
         distance_target = np.minimum.reduce([euclidean_distance(envs.get_obj_pos(target_object), envs.get_part_pos(robot_part)) for robot_part in robot_useful_parts])
-        
+
         closeness = np.power(distance_target + 1e-6, -2)
         reward = np.clip(closeness, 0, 10)
 
@@ -218,5 +217,4 @@ def update_reward(envs, frame, reward, some_state, goal=None, target_object="ora
 if __name__ == "__main__":
     # os.system('git add .')
     # os.system('git commit -m f"{config.experiment_name}"')
-
     demo_run()

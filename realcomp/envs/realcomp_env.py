@@ -1,10 +1,10 @@
 import os
-from realcomp.task import config
 
 import numpy as np
 import pybullet
 from pybullet_envs.env_bases import MJCFBaseBulletEnv
 from pybullet_envs.scene_abstract import SingleRobotEmptyScene
+from realcomp.task import config
 
 from .realcomp_robot import Kuka
 
