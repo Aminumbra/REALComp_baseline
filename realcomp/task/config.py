@@ -58,6 +58,7 @@ num_envs = 4
 observations_to_stack = 1
 reset_on_touch = True
 image_shape = (60, 45)
+lr = 3e-4
 ludicrous_speed = True
 
 if DEBUG:

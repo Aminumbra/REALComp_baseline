@@ -91,8 +91,8 @@ def demo_run():
         print("Starting intrinsic phase...")
         for frame in tqdm.tqdm(range(config.intrinsic_frames // config.num_envs)):
             # time.sleep(0.05)
-            if config.save_every and frame and frame % config.save_every == 0:
-                controller.save_models("models.pth")
+            # if config.save_every and frame and frame % config.save_every == 0:
+            #     controller.save_models("models.pth")
 
             action = controller.step(observation, reward, done, test=False)
 
@@ -107,7 +107,7 @@ def demo_run():
                     done = np.ones(config.num_envs)
                     observation = envs.reset()
 
-    controller.save_models("models.pth")
+    # controller.save_models("models.pth")
 
     config.tensorboard.close()
     print("Starting extrinsic phase...")

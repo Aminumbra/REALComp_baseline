@@ -35,8 +35,6 @@ class ModelActor(nn.Module):
         self.layers.append(nn.Linear(size_layers[num_hidden - 1], num_actions))
 
         self.log_std = nn.Parameter(torch.ones(1, num_actions) * log_std)
-        self.optimizer = optim.Adam(self.parameters(), lr=lr)
-
         self.num_actions = num_actions
 
     def forward(self, x):
@@ -75,8 +73,6 @@ class ModelCritic(nn.Module):
 
         self.layers.append(nn.Linear(size_layers[num_hidden - 1], 1))
 
-        self.optimizer = optim.Adam(self.parameters(), lr=lr)
-
     def forward(self, x):
         for layer in self.layers:
             x = layer(x)
@@ -85,47 +81,47 @@ class ModelCritic(nn.Module):
 
 
 class CNN(nn.Module):
-
     def __init__(self, shape_pic=(96, 144, 3), size_output=256):
         super(CNN, self).__init__()
 
         self.layer1 = nn.Sequential(
             nn.Conv2d(shape_pic[2], 16, kernel_size=5, stride=1, padding=2),
-            nn.BatchNorm2d(16),
+            # nn.BatchNorm2d(16),
             nn.ReLU(),
             nn.MaxPool2d(kernel_size=2, stride=2))
 
-        self.layer2 = nn.Sequential(
-            nn.Conv2d(16, 16, kernel_size=5, stride=1, padding=2),
-            nn.BatchNorm2d(16),
-            nn.ReLU(),
-            nn.MaxPool2d(kernel_size=2, stride=2))
+        # self.layer2 = nn.Sequential(
+        #     nn.Conv2d(16, 16, kernel_size=5, stride=1, padding=2),
+        #     nn.BatchNorm2d(16),
+        #     nn.ReLU(),
+        #     nn.MaxPool2d(kernel_size=2, stride=2))
 
-        self.layer3 = nn.Sequential(
-            nn.Conv2d(16, 16, kernel_size=5, stride=1, padding=2),
-            nn.BatchNorm2d(16),
-            nn.ReLU(),
-            nn.MaxPool2d(kernel_size=2, stride=2))
+        # self.layer3 = nn.Sequential(
+        #     nn.Conv2d(16, 16, kernel_size=5, stride=1, padding=2),
+        #     nn.BatchNorm2d(16),
+        #     nn.ReLU(),
+        #     nn.MaxPool2d(kernel_size=2, stride=2))
 
         size_h = self.size_after_conv(shape_pic[0], 5, 1, 2)
-        size_h = self.size_after_conv(size_h, 2, 2, 0)
-        size_h = self.size_after_conv(size_h, 5, 1, 2)
-        size_h = self.size_after_conv(size_h, 2, 2, 0)
-        size_h = self.size_after_conv(size_h, 5, 1, 2)
+        # size_h = self.size_after_conv(size_h, 2, 2, 0)
+        # size_h = self.size_after_conv(size_h, 5, 1, 2)
+        # size_h = self.size_after_conv(size_h, 2, 2, 0)
+        # size_h = self.size_after_conv(size_h, 5, 1, 2)
         size_h = self.size_after_conv(size_h, 2, 2, 0)
 
         size_w = self.size_after_conv(shape_pic[1], 5, 1, 2)
-        size_w = self.size_after_conv(size_w, 2, 2, 0)
-        size_w = self.size_after_conv(size_w, 5, 1, 2)
-        size_w = self.size_after_conv(size_w, 2, 2, 0)
-        size_w = self.size_after_conv(size_w, 5, 1, 2)
-        size_w = self.size_after_conv(size_w, 2, 2, 0)
+        # size_w = self.size_after_conv(size_w, 2, 2, 0)
+        # size_w = self.size_after_conv(size_w, 5, 1, 2)
+        # size_w = self.size_after_conv(size_w, 2, 2, 0)
+        # size_w = self.size_after_conv(size_w, 5, 1, 2)
+        # size_w = self.size_after_conv(size_w, 2, 2, 0)
 
         self.fc = nn.Sequential(
-            nn.Linear(size_h * size_w * 16, size_output),
+            # nn.Linear(size_h * size_w * 16, size_output),
+            nn.Linear(55296, size_output),
             nn.ReLU())
 
-        self.optimizer = optim.Adam(self.parameters())
+        # self.optimizer = optim.Adam(self.parameters())
 
     def size_after_conv(self, init_size, kernel_size, stride, padding, dilation=1):
         return int((init_size + 2 * padding - dilation * (kernel_size - 1) - 1) / stride + 1)
@@ -137,8 +133,8 @@ class CNN(nn.Module):
         # plt.show()
 
         x = self.layer1(x)
-        x = self.layer2(x)
-        x = self.layer3(x)
+        # x = self.layer2(x)
+        # x = self.layer3(x)
         x = torch.flatten(x, 1)
         x = self.fc(x)
 
@@ -270,9 +266,9 @@ class PPOAgent:
         self.frames_per_action = frames_per_action
 
         # Models
-
         if shape_pic is not None:
             self.cnn = CNN(shape_pic=shape_pic, size_output=size_cnn_output).to(config.device)
+
         self.actor = ModelActor(self.size_obs + size_cnn_output, self.num_actions, size_layers=size_layers, lr=actor_lr, log_std=log_std).to(config.device)
         self.critic = ModelCritic(self.size_obs + size_cnn_output, size_layers=size_layers, lr=critic_lr).to(config.device)
 
@@ -302,6 +298,13 @@ class PPOAgent:
         if logs:
             # self.writer = UtilsTensorboard.writer(logs_dir)
             self.writer = config.tensorboard
+
+        params = list(self.actor.parameters()) + list(self.critic.parameters())
+
+        if self.shape_pic:
+            params += list(self.cnn.parameters())
+
+        self.optimizer = optim.Adam(params=params, lr=config.lr)
 
     ######################################################################
 
@@ -455,19 +458,15 @@ class PPOAgent:
                 # L_VF in the paper
                 critic_loss = ((return_ - value) ** 2).mean()
 
-                if self.shape_pic is not None:
-                    self.cnn.optimizer.zero_grad()
-                self.actor.optimizer.zero_grad()
-                self.critic.optimizer.zero_grad()
+                # if self.shape_pic is not None:
+                #     self.cnn.optimizer.zero_grad()
+                # self.actor.optimizer.zero_grad()
+                # self.critic.optimizer.zero_grad()
+                self.optimizer.zero_grad()
 
-                loss = actor_loss + self.value_loss_coeff * critic_loss
+                loss = actor_loss  # + self.value_loss_coeff * critic_loss
                 loss.backward()
-
-                self.actor.optimizer.step()
-                self.critic.optimizer.step()
-
-                if self.shape_pic is not None:
-                    self.cnn.optimizer.step()
+                self.optimizer.step()
 
             if self.logs:
                 self.writer.add_scalar("train/entropy", entropy.mean().item(), self.epochs * self.number_updates + k)
