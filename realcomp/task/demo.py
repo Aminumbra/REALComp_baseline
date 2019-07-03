@@ -13,9 +13,11 @@ currentdir = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentfram
 parentdir = os.path.dirname(os.path.dirname(currentdir))
 os.sys.path.insert(0, parentdir)
 # from my_controller import MyController
-from realcomp.task.PPOAgent import PPOAgent
-from PPOAgent import PPOAgent
+from realcomp.task.PPOAgent import PPOAgent, CNN
 from MultiprocessEnv import VecNormalize
+from train_cnn import train_cnn, test_cnn
+import torch.optim as optim
+import torch
 
 objects_names = ["mustard", "tomato", "orange"]
 
@@ -41,7 +43,9 @@ def make_env(env_id):
 
 env_id = "REALComp-v0"
 envs = [make_env(env_id) for e in range(config.num_envs)]
-envs = VecNormalize(envs, keys=["joint_positions", "touch_sensors", "retina"], ret=False)  # Add 'retina' if needed
+envs = VecNormalize(envs, keys=["joint_positions", "touch_sensors", "retina"], ret=True)  # Add 'retina' if needed
+
+distance = torch.nn.PairwiseDistance()
 
 
 #################################################
@@ -52,17 +56,17 @@ def demo_run():
     # controller = Controller(env.action_space)
     controller = PPOAgent(action_space=envs.action_space,
                           size_obs=13 * config.observations_to_stack,
-                          shape_pic=(96, 144, 3),  # As received from the wrapper
+                          shape_pic=(72, 144, 3),  # As received from the wrapper
                           size_layers=[64, 64],
-                          size_cnn_output=256,
+                          size_cnn_output=2,
                           actor_lr=1e-4,
                           critic_lr=1e-3,
                           value_loss_coeff=1.,
                           gamma=0.9,
                           gae_lambda=0.95,
                           epochs=10,
-                          horizon=64,
-                          mini_batch_size=16,
+                          horizon=32,
+                          mini_batch_size=8,
                           frames_per_action=config.frames_per_action,
                           init_wait=config.noop_steps,
                           clip=0.2,
@@ -73,17 +77,57 @@ def demo_run():
                           logs=True,
                           )
 
+
+    ###################################
+    # Pre-training of the CNN
+
+    if config.pre_train_cnn:
+        crop = True
+        if crop:
+            shape_pic = (72, 144, 3)
+        else:
+            shape_pic = (240, 320, 3)
+
+        model_cnn = CNN(shape_pic=shape_pic, size_output=2)
+        model_optimizer = optim.Adam(model_cnn.parameters())
+        env = gym.make("REALComp-v0")
+
+        losses = train_cnn(env,
+                           model_cnn,
+                           model_optimizer,
+                           updates=300,
+                           shape_pic=shape_pic,
+                           crop=crop)
+
+        # Quick display of the model performances
+        test_cnn(env,
+             model_cnn,
+             model_optimizer,
+             10,
+             shape_pic=shape_pic,
+             crop=crop)
+
+        # Assign the trained model to the Agent
+
+        controller.cnn = model_cnn.to(config.device)
+        controller.optimizer = optim.Adam(params=list(controller.actor.parameters())
+                                          + list(controller.critic.parameters()))
+
+    ###################################
+
     # render simulation on screen
     if config.render:
         envs.render('human')
 
     # reset simulation
-    observation = envs.reset()
+    observation = envs.reset(config.random_reset)
     reward = np.zeros(config.num_envs)
     done = np.zeros(config.num_envs)
 
     # intrinsic phase
     some_state = np.zeros_like(reward, dtype=np.float64)
+    time_since_last_touch = 0
+    touches = 0
 
     if config.model_to_load:
         controller.load_models(config.model_to_load)
@@ -99,13 +143,29 @@ def demo_run():
             observation, reward, done, _ = envs.step(action.cpu())
             reward, had_contact, some_state = update_reward(envs, frame, reward, some_state)
 
+            time_since_last_touch += 1
+
             config.tensorboard.add_scalar('intrinsic/rewards', reward.mean(), frame)
             config.tensorboard.add_scalar('intrinsic/did_it_touch', had_contact.max(), frame)
+            if had_contact.max():
+                config.tensorboard.add_scalar('intrinsic/time_since_last_touch', time_since_last_touch, touches)
+                touches += 1
+                time_since_last_touch = 0
+
+            picture = observation[:, 13:]
+            picture = picture.reshape((controller.num_parallel, controller.shape_pic[0], controller.shape_pic[1], controller.shape_pic[2]))
+            picture = torch.FloatTensor(picture)
+            picture = picture.permute(0, 3, 1, 2)
+            cnn_output = controller.cnn(picture.to(config.device))
+            cnn_output = cnn_output.detach()
+            dist_output_label = distance(cnn_output.to(torch.device("cpu")), torch.FloatTensor(envs.get_obj_pos("orange")[:, 0:2]).to(torch.device("cpu"))).to(torch.device("cpu")).mean()
+            config.tensorboard.add_scalar('intrinsic/distance_cnn_output_reality', dist_output_label, frame)
+
 
             if config.reset_on_touch:
                 if any(had_contact):
                     done = np.ones(config.num_envs)
-                    observation = envs.reset()
+                    observation = envs.reset(config.random_reset)
 
     # controller.save_models("models.pth")
 
@@ -144,21 +204,23 @@ def demo_run():
 
 def showoff(controller):
     envs = [make_env(env_id)]
-    envs = VecNormalize(envs, keys=["joint_positions", "touch_sensors"])  # Add 'retina' if needed
+    envs = VecNormalize(envs, keys=["joint_positions", "touch_sensors", "retina"])  # Add 'retina' if needed
 
     envs.render('human')
 
     controller.soft_reset()
     controller.num_parallel = 1
-    observation = envs.reset()
+    observation = envs.reset(config.random_reset)
     reward = None
     done = False
     for frame in tqdm.tqdm(range(10000)):
         action = controller.step(observation, reward, done, test=True)
         observation, reward, done, _ = envs.step(action.cpu())
 
-        if get_contacts(envs, "orange")[0]:
-            observation = envs.reset()
+        contacts = get_contacts(envs, "orange")
+
+        if (frame > config.noop_steps and frame % 80 == 0) or (contacts.max() and config.reset_on_touch):
+            observation = envs.reset(config.random_reset)
             done = np.ones(1)
 
 
@@ -191,7 +253,7 @@ def update_reward(envs, frame, reward, some_state, goal=None, target_object="ora
             obj_init_pos[i] = envs.get_obj_pos(obj)  # We associate to the i-th object an array of length len(envs),  whose elements are positions (3-tuples)
 
     had_contact = get_contacts(envs, target_object)
-    robot_useful_parts = ["finger_00", "finger_01", "finger_10", "finger_11", "lbr_iiwa_link_7"]  # 4 fingers + the last part of the robot (~ "its hand")
+    robot_useful_parts = ["finger_00", "finger_01", "finger_10", "finger_11"]  # 4 fingers + the last part of the robot (~ "its hand")
 
     if frame > config.noop_steps:
         for i, obj in enumerate(objects_names):

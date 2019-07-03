@@ -84,42 +84,48 @@ class CNN(nn.Module):
     def __init__(self, shape_pic=(96, 144, 3), size_output=256):
         super(CNN, self).__init__()
 
+        self.size_output = size_output
+
         self.layer1 = nn.Sequential(
             nn.Conv2d(shape_pic[2], 16, kernel_size=5, stride=1, padding=2),
-            # nn.BatchNorm2d(16),
+            nn.BatchNorm2d(16),
             nn.ReLU(),
             nn.MaxPool2d(kernel_size=2, stride=2))
 
-        # self.layer2 = nn.Sequential(
-        #     nn.Conv2d(16, 16, kernel_size=5, stride=1, padding=2),
-        #     nn.BatchNorm2d(16),
-        #     nn.ReLU(),
-        #     nn.MaxPool2d(kernel_size=2, stride=2))
+        self.layer2 = nn.Sequential(
+            nn.Conv2d(16, 16, kernel_size=5, stride=1, padding=2),
+            nn.BatchNorm2d(16),
+            nn.ReLU(),
+            nn.MaxPool2d(kernel_size=2, stride=2))
 
-        # self.layer3 = nn.Sequential(
-        #     nn.Conv2d(16, 16, kernel_size=5, stride=1, padding=2),
-        #     nn.BatchNorm2d(16),
-        #     nn.ReLU(),
-        #     nn.MaxPool2d(kernel_size=2, stride=2))
+        self.layer3 = nn.Sequential(
+            nn.Conv2d(16, 16, kernel_size=5, stride=1, padding=2),
+            nn.BatchNorm2d(16),
+            nn.ReLU(),
+            nn.MaxPool2d(kernel_size=2, stride=2))
 
-        size_h = self.size_after_conv(shape_pic[0], 5, 1, 2)
-        # size_h = self.size_after_conv(size_h, 2, 2, 0)
-        # size_h = self.size_after_conv(size_h, 5, 1, 2)
-        # size_h = self.size_after_conv(size_h, 2, 2, 0)
-        # size_h = self.size_after_conv(size_h, 5, 1, 2)
+        size_h = self.size_after_conv(shape_pic[0], 5, 1, 2) #Layer 1 Conv layer
+        size_h = self.size_after_conv(size_h, 2, 2, 0) #MaxPool of Layer 1
+        size_h = self.size_after_conv(size_h, 5, 1, 2)
+        size_h = self.size_after_conv(size_h, 2, 2, 0)
+        size_h = self.size_after_conv(size_h, 5, 1, 2)
         size_h = self.size_after_conv(size_h, 2, 2, 0)
 
         size_w = self.size_after_conv(shape_pic[1], 5, 1, 2)
-        # size_w = self.size_after_conv(size_w, 2, 2, 0)
-        # size_w = self.size_after_conv(size_w, 5, 1, 2)
-        # size_w = self.size_after_conv(size_w, 2, 2, 0)
-        # size_w = self.size_after_conv(size_w, 5, 1, 2)
-        # size_w = self.size_after_conv(size_w, 2, 2, 0)
+        size_w = self.size_after_conv(size_w, 2, 2, 0)
+        size_w = self.size_after_conv(size_w, 5, 1, 2)
+        size_w = self.size_after_conv(size_w, 2, 2, 0)
+        size_w = self.size_after_conv(size_w, 5, 1, 2)
+        size_w = self.size_after_conv(size_w, 2, 2, 0)
 
         self.fc = nn.Sequential(
-            # nn.Linear(size_h * size_w * 16, size_output),
-            nn.Linear(55296, size_output),
+            nn.Linear(size_h * size_w * 16, 256),
             nn.ReLU())
+
+        self.output = nn.Sequential(
+            nn.Linear(256, size_output))
+            #nn.Linear(256, size_output),
+            #nn.ReLU())
 
         # self.optimizer = optim.Adam(self.parameters())
 
@@ -131,12 +137,13 @@ class CNN(nn.Module):
         # img = np.transpose(img, (1, 2, 0))
         # plt.imshow(img)
         # plt.show()
-
+                           
         x = self.layer1(x)
-        # x = self.layer2(x)
-        # x = self.layer3(x)
+        x = self.layer2(x)
+        x = self.layer3(x)
         x = torch.flatten(x, 1)
         x = self.fc(x)
+        x = self.output(x)
 
         return x
 
@@ -405,10 +412,12 @@ class PPOAgent:
     def ppo_iterator(self, mini_batch_size, states, actions, log_probas, returns, advantages):
 
         n_states = states.size(0)
-
+        possible_indices = np.arange(n_states)
+        
         for k in range(n_states // mini_batch_size):
             # generates mini_batch_size indices
-            indices = np.random.randint(0, n_states, mini_batch_size)
+            indices = np.random.choice(possible_indices, mini_batch_size, replace=False)
+            possible_indices = np.array([x for x in possible_indices if not x in indices])
 
             yield (states[indices, :],
                    actions[indices, :],
@@ -464,7 +473,7 @@ class PPOAgent:
                 # self.critic.optimizer.zero_grad()
                 self.optimizer.zero_grad()
 
-                loss = actor_loss  # + self.value_loss_coeff * critic_loss
+                loss = actor_loss + self.value_loss_coeff * critic_loss
                 loss.backward()
                 self.optimizer.step()
 
@@ -501,7 +510,7 @@ class PPOAgent:
 
         self.frame += 1
 
-        if self.frame == self.horizon:
+        if self.frame == self.horizon and not test: # Don't want to learn while testing
             self.update()
 
         # TODO : Might need to change a few things if we use a CNN on only part of the stacked frames !!

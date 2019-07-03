@@ -4,7 +4,6 @@ from multiprocessing import Process, Pipe
 
 import numpy as np
 
-
 def worker(remote, parent_remote, env_fn_wrapper):
     parent_remote.close()
     env = env_fn_wrapper.x()
@@ -16,7 +15,13 @@ def worker(remote, parent_remote, env_fn_wrapper):
                 ob = env.reset()
             remote.send((ob, reward, done, info))
         elif cmd == 'reset':
-            ob = env.reset()
+            if data == 'random':
+                rand_x = np.random.uniform(low=-0.15, high=0.05)
+                rand_y = np.random.uniform(low=-0.50, high=0.50) #np.random.uniform(low=-0.50, high=0.50)
+                env.robot.object_poses["orange"] = [rand_x, rand_y, 0.55, 0.00, 0.00, 0.00]
+                ob = env.reset()
+            else:
+                ob = env.reset()
             remote.send(ob)
         elif cmd == 'reset_task':
             ob = env.reset_task()
@@ -194,7 +199,6 @@ class SubprocVecEnv(VecEnv):
 
 from PIL import Image
 
-
 class RobotVecEnv(SubprocVecEnv):
     def __init__(self, env_fns, keys=["joint_positions", "touch_sensors"]):
         super(RobotVecEnv, self).__init__(env_fns)
@@ -210,7 +214,7 @@ class RobotVecEnv(SubprocVecEnv):
                 image = o["retina"]
                 image = image[60:185, 30:285, :]
                 image = Image.fromarray(image)
-                image = image.resize((144, 96))  # Width, then height
+                image = image.resize((144, 72))  # Width, then height
                 image = np.ravel(image) / 255.  # Want a 1D-array, of floating-point numbers
 
                 converted_obs[-1] = np.concatenate((converted_obs[-1], image))
@@ -239,9 +243,9 @@ class RobotVecEnv(SubprocVecEnv):
 
         return self.obs_to_array(obs), np.stack(rews), np.stack(dones), infos
 
-    def reset(self):
+    def reset(self, data=None):
         for remote in self.remotes:
-            remote.send(('reset', None))
+            remote.send(('reset', data))
         return self.obs_to_array([remote.recv() for remote in self.remotes])
 
     def render(self, mode=None):
@@ -294,7 +298,7 @@ class VecNormalize(RobotVecEnv):
         else:
             return obs
 
-    def reset(self):
+    def reset(self, data=None):
         self.ret = np.zeros(self.num_envs)
-        obs = super().reset()
+        obs = super().reset(data)
         return self._obfilt(obs)
