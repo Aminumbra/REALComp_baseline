@@ -294,10 +294,10 @@ class VecNormalize(RobotVecEnv):
     def _obfilt(self, obs):
         # Modified this function so it only normalizes the first 13 values of the observation !
         if self.ob_rms:
-            trunc_obs = obs[:, :13]
+            trunc_obs = obs[:, :9]
             self.ob_rms.update(trunc_obs)
             trunc_obs = np.clip((trunc_obs - self.ob_rms.mean) / np.sqrt(self.ob_rms.var + self.epsilon), -self.clipob, self.clipob)
-            obs[:, :13] = trunc_obs
+            obs[:, :9] = trunc_obs
             return obs
         else:
             return obs

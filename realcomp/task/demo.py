@@ -57,7 +57,7 @@ def demo_run():
     controller = PPOAgent(action_space=envs.action_space,
                           size_obs=12 * config.observations_to_stack,
                           shape_pic=None,#(72, 144, 3),  # As received from the wrapper
-                          size_layers=[32, 16],
+                          size_layers=[12, 12],
                           size_cnn_output=2,
                           actor_lr=1e-4,
                           critic_lr=1e-3,
@@ -165,7 +165,7 @@ def demo_run():
 
 
             if config.reset_on_touch:
-                if any(had_contact):
+                if any(had_contact) and np.random.rand() < 0.9 and frame % config.frames_per_action == 0: # We do not reset each time, so we learn how to "stick" to the target
                     done = np.ones(config.num_envs)
                     observation = envs.reset(config.random_reset)
 
@@ -270,8 +270,8 @@ def update_reward(envs, frame, reward, some_state, goal=None, target_object="ora
         some_state += reward
         reward = some_state.copy()
 
-        if not frame % config.frames_per_action:
-            reward += 100 * had_contact  # Add an extra-reward for touching the orange
+        if not frame % config.frames_per_action: #Only interested in the final step of the action for the contact with the target
+            reward = 1e-6 + 100 * had_contact #reward += 100 * had_contact  # Add an extra-reward for touching the orange
             some_state.fill(0)
 
     assert frame <= config.noop_steps or reward.mean() > 0

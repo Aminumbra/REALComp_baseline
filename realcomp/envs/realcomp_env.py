@@ -34,9 +34,9 @@ class REALCompEnv(MJCFBaseBulletEnv):
         MJCFBaseBulletEnv.__init__(self, self.robot, render)
 
         self._cam_dist = 1.2
-        self._cam_yaw = 30
+        self._cam_yaw = 90 #30
         self._cam_roll = 0
-        self._cam_pitch = -30
+        self._cam_pitch = -70 #-30
 
         if config.wtcheat:
             self._render_width = 1
@@ -45,7 +45,7 @@ class REALCompEnv(MJCFBaseBulletEnv):
             self._render_width = 320
             self._render_height = 240
 
-        self._cam_pos = [0, 0, .4]
+        self._cam_pos = [0, 0, 0.3] #[0, 0, 0.4]
         self.setCamera()
         self.eyes = {}
 
