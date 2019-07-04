@@ -17,7 +17,7 @@ def worker(remote, parent_remote, env_fn_wrapper):
         elif cmd == 'reset':
             if data == 'random':
                 rand_x = np.random.uniform(low=-0.15, high=0.05)
-                rand_y = np.random.uniform(low=-0.50, high=0.50) #np.random.uniform(low=-0.50, high=0.50)
+                rand_y = np.random.uniform(low=-0.40, high=0.40)
                 env.robot.object_poses["orange"] = [rand_x, rand_y, 0.55, 0.00, 0.00, 0.00]
                 ob = env.reset()
             else:
@@ -207,8 +207,12 @@ class RobotVecEnv(SubprocVecEnv):
 
     def obs_to_array(self, obs):
         converted_obs = []
-        for o in obs:
+
+        orange_pos = self.get_obj_pos("orange")
+        
+        for i, o in enumerate(obs):
             converted_obs.append(np.concatenate([np.ravel(o[k]) for k in self.keys if k != "retina"]))
+            converted_obs[-1] = np.concatenate((converted_obs[-1], orange_pos[i]))
 
             if "retina" in self.keys:
                 image = o["retina"]

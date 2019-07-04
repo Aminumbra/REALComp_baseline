@@ -5,7 +5,6 @@ import tqdm
 
 from PPOAgent import PPOAgent, CNN
 from MultiprocessEnv import VecNormalize
-from matplotlib import pyplot as plt
 import torch
 import torch.optim as optim
 from PIL import Image
@@ -18,16 +17,18 @@ def train_cnn(env,
               epochs=1,
               shape_pic=(240, 320, 3),
               crop=False,
-              target="orange"):
+              target="orange",
+              tensorboard=None):
 
     training_pics = []
     labels = []
     losses = []
 
-    distance = torch.nn.PairwiseDistance()
+    loss_function = torch.nn.MSELoss()
 
     #env.render("human")
     obs = env.reset()
+    update_count = 0
     
     for i in tqdm.tqdm(range(updates * batch_size * 4)):
 
@@ -37,9 +38,10 @@ def train_cnn(env,
         obs, _, _, _ = env.step(action)
 
         if np.random.rand() < 0.06:
-            rand_x = np.random.uniform(low=-0.15, high=0.05)
-            rand_y = np.random.uniform(low=-0.50, high=0.50)
-            env.robot.object_poses[target] = [rand_x, rand_y, 0.55, 0.00, 0.00, 0.00]
+            for obj in ["tomato", "orange", "mustard"]:
+                rand_x = np.random.uniform(low=-0.15, high=0.05)
+                rand_y = np.random.uniform(low=-0.50, high=0.50)
+                env.robot.object_poses[obj] = [rand_x, rand_y, 0.55, 0.00, 0.00, 0.00]
             obs = env.reset()
 
             
@@ -72,7 +74,7 @@ def train_cnn(env,
                 outputs = model(training_pics_tensor)
                 labels_tensor = torch.FloatTensor(labels)
 
-                loss = 10 * distance(outputs, labels_tensor).mean()
+                loss = 10 * loss_function(outputs, labels_tensor).mean()
 
                 model_optimizer.zero_grad()
                 loss.backward()
@@ -81,6 +83,11 @@ def train_cnn(env,
             training_pics = []
             labels = []
             losses.append(loss.item())
+
+            if tensorboard:
+                tensorboard.add_scalar("train/CNN_pre_training_loss", loss.item(), update_count)
+                
+            update_count += 1
 
     return losses
 
@@ -144,11 +151,7 @@ if __name__=="__main__":
                        updates=200,
                        shape_pic=shape_pic,
                        crop=crop)
-   
-    plt.plot(losses)
-    plt.title("Losses as a function of steps")
-    plt.show()
-
+    
     test_cnn(env,
          model,
          model_optimizer,

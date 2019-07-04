@@ -46,16 +46,16 @@ print(f"USING {device}")
 
 render = False
 noop_steps = 120
-frames_per_action = 5
-intrinsic_frames = 120000
+frames_per_action = 2
+intrinsic_frames = 160000
 # render_but_no_render = True
 enjoy = True
-wtcheat = False
+wtcheat = True
 save_every = False
 extrinsic_trials = 10
 num_envs = 4
 observations_to_stack = 1
-pre_train_cnn=True
+pre_train_cnn = False
 reset_on_touch = True
 random_reset = "random"
 image_shape = (144, 72)

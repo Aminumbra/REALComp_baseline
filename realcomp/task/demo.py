@@ -43,9 +43,9 @@ def make_env(env_id):
 
 env_id = "REALComp-v0"
 envs = [make_env(env_id) for e in range(config.num_envs)]
-envs = VecNormalize(envs, keys=["joint_positions", "touch_sensors", "retina"], ret=True)  # Add 'retina' if needed
+envs = VecNormalize(envs, keys=["joint_positions"], ret=True)  # Add 'retina' and/or 'touch_sensors' if needed
 
-distance = torch.nn.PairwiseDistance()
+loss_function = torch.nn.MSELoss()
 
 
 #################################################
@@ -55,9 +55,9 @@ def demo_run():
     # env = gym.make('REALComp-v0')
     # controller = Controller(env.action_space)
     controller = PPOAgent(action_space=envs.action_space,
-                          size_obs=13 * config.observations_to_stack,
-                          shape_pic=(72, 144, 3),  # As received from the wrapper
-                          size_layers=[64, 64],
+                          size_obs=12 * config.observations_to_stack,
+                          shape_pic=None,#(72, 144, 3),  # As received from the wrapper
+                          size_layers=[32, 16],
                           size_cnn_output=2,
                           actor_lr=1e-4,
                           critic_lr=1e-3,
@@ -95,9 +95,10 @@ def demo_run():
         losses = train_cnn(env,
                            model_cnn,
                            model_optimizer,
-                           updates=300,
+                           updates=400,
                            shape_pic=shape_pic,
-                           crop=crop)
+                           crop=crop,
+                           tensorboard=config.tensorboard)
 
         # Quick display of the model performances
         test_cnn(env,
@@ -142,7 +143,7 @@ def demo_run():
 
             observation, reward, done, _ = envs.step(action.cpu())
             reward, had_contact, some_state = update_reward(envs, frame, reward, some_state)
-
+            
             time_since_last_touch += 1
 
             config.tensorboard.add_scalar('intrinsic/rewards', reward.mean(), frame)
@@ -152,14 +153,15 @@ def demo_run():
                 touches += 1
                 time_since_last_touch = 0
 
-            picture = observation[:, 13:]
-            picture = picture.reshape((controller.num_parallel, controller.shape_pic[0], controller.shape_pic[1], controller.shape_pic[2]))
-            picture = torch.FloatTensor(picture)
-            picture = picture.permute(0, 3, 1, 2)
-            cnn_output = controller.cnn(picture.to(config.device))
-            cnn_output = cnn_output.detach()
-            dist_output_label = distance(cnn_output.to(torch.device("cpu")), torch.FloatTensor(envs.get_obj_pos("orange")[:, 0:2]).to(torch.device("cpu"))).to(torch.device("cpu")).mean()
-            config.tensorboard.add_scalar('intrinsic/distance_cnn_output_reality', dist_output_label, frame)
+            if config.pre_train_cnn:
+                picture = observation[:, 13:]
+                picture = picture.reshape((controller.num_parallel, controller.shape_pic[0], controller.shape_pic[1], controller.shape_pic[2]))
+                picture = torch.FloatTensor(picture)
+                picture = picture.permute(0, 3, 1, 2)
+                cnn_output = controller.cnn(picture.to(config.device))
+                cnn_output = cnn_output.detach()
+                loss = loss_function(cnn_output.to(torch.device("cpu")), torch.FloatTensor(envs.get_obj_pos("orange")[:, 0:2]).to(torch.device("cpu"))).to(torch.device("cpu")).mean()
+                config.tensorboard.add_scalar('train/Fixed_CNN_loss', loss, frame)
 
 
             if config.reset_on_touch:
@@ -203,8 +205,9 @@ def demo_run():
 
 
 def showoff(controller):
+    config.wtcheat = False
     envs = [make_env(env_id)]
-    envs = VecNormalize(envs, keys=["joint_positions", "touch_sensors", "retina"])  # Add 'retina' if needed
+    envs = VecNormalize(envs, keys=["joint_positions"])  # Add 'retina' and/or 'touch_sensors' if needed
 
     envs.render('human')
 
