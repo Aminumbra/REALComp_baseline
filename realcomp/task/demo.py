@@ -63,7 +63,7 @@ def demo_run():
                           actor_lr=1e-4,
                           critic_lr=1e-3,
                           value_loss_coeff=1.,
-                          gamma=0.9,
+                          gamma=0.95,
                           gae_lambda=0.95,
                           epochs=10,
                           horizon=32,
@@ -141,6 +141,10 @@ def demo_run():
             # if config.save_every and frame and frame % config.save_every == 0:
             #     controller.save_models("models.pth")
 
+            # Used to reset the normalization. All the envs. terminate at the same time, so we can do this
+            if any(done):
+                envs.ret = done
+            
             if new_episode:
                 new_episode = False
                 # Add things : change current goal, etc
@@ -264,29 +268,27 @@ def get_contacts(envs, target_object, punished_objects):
 
 
 def update_reward(envs, frame, reward, some_state, target_object="orange", punished_objects=["mustard", "tomato"]):
-    obj_init_pos = np.ndarray((3, len(envs), 3))
-    obj_cur_pos = np.ndarray((3, len(envs), 3))
 
     if frame == 0:
         pass
 
-    elif frame % config.frames_per_action == 0 and frame >= config.noop_steps:
-        for i, obj in enumerate(objects_names):
-            obj_init_pos[i] = envs.get_obj_pos(obj)  # We associate to the i-th object an array of length len(envs),  whose elements are positions (3-tuples)
-
     good_contacts, bad_contacts = get_contacts(envs, target_object, punished_objects)
     robot_useful_parts = ["finger_00", "finger_01", "finger_10", "finger_11"]  # 4 fingers + the last part of the robot (~ "its hand")
+    target_pos = envs.get_obj_pos(target_object)
 
     if frame > config.noop_steps:
-        for i, obj in enumerate(objects_names):
-            obj_cur_pos[i] = envs.get_obj_pos(obj)
 
-        distance_target = np.minimum.reduce([euclidean_distance(envs.get_obj_pos(target_object), envs.get_part_pos(robot_part)) for robot_part in robot_useful_parts])
+        distance_target = np.minimum.reduce([euclidean_distance(target_pos, envs.get_part_pos(robot_part)) for robot_part in robot_useful_parts])
 
         closeness = np.power(distance_target + 1e-6, -2)
         reward = np.clip(closeness, 0, 10)
-
+        
+        # touch_sensors = envs.get_touch_sensors()
+        # sensors_activated = np.array(np.max(touch_sensors, axis=1), dtype=bool) # Array of length num_envs, containing True if one of the sensors > 0, False otherwise
+        # lift_reward = target_pos[:, 2] * sensors_activated
+        
         some_state += reward
+        #some_state += lift_reward * 400
         reward = some_state.copy()
 
         if not frame % config.frames_per_action: # Only interested in the final step of the action for the contact with the target
@@ -296,6 +298,7 @@ def update_reward(envs, frame, reward, some_state, target_object="orange", punis
     #assert frame <= config.noop_steps or reward.mean() > 0        
     reward = reward * 0.01
 
+    envs.ret = envs.ret * envs.gamma + reward
     reward = envs._rewfilt(reward)
     
     return reward, good_contacts, some_state

@@ -37,6 +37,9 @@ def worker(remote, parent_remote, env_fn_wrapper):
         elif cmd == 'get_part_pos':
             part_pos = env.get_part_pos(data)
             remote.send(part_pos)
+        elif cmd == 'get_touch_sensors':
+            touch_sensors = env.robot.get_touch_sensors()
+            remote.send(touch_sensors)
         elif cmd == 'render':
             if data is not None:
                 env.render(data)
@@ -201,6 +204,7 @@ class RobotVecEnv(SubprocVecEnv):
         super(RobotVecEnv, self).__init__(env_fns)
 
         self.keys = keys
+        self.observation_space = np.array(13 + 3*3)
 
     def obs_to_array(self, obs):
         converted_obs = []
@@ -239,6 +243,11 @@ class RobotVecEnv(SubprocVecEnv):
             remote.send(('get_part_pos', part))
         return np.stack([remote.recv() for remote in self.remotes])
 
+    def get_touch_sensors(self):
+        for remote in self.remotes:
+            remote.send(('get_touch_sensors', None))
+        return np.stack([remote.recv() for remote in self.remotes])
+
     def step_wait(self):
         results = [remote.recv() for remote in self.remotes]
         self.waiting = False
@@ -263,9 +272,11 @@ class VecNormalize(RobotVecEnv):
     and returns from an environment.
     """
 
-    def __init__(self, envs, size_obs_to_norm=13, ob=True, ret=True, clipob=10., cliprew=10., gamma=0.99, epsilon=1e-8, use_tf=False):
+    def __init__(self, envs, size_obs_to_norm=13, ob=True, ret=True, clipob=10., cliprew=10., gamma=0.95, epsilon=1e-8, use_tf=False):
         self.envs = envs
         self.size_obs_to_norm = size_obs_to_norm
+
+        self.i = 0
         
         if use_tf:
             from baselines.common.running_mean_std import TfRunningMeanStd
@@ -296,7 +307,7 @@ class VecNormalize(RobotVecEnv):
             trunc_obs = obs[:, :self.size_obs_to_norm]
             self.ob_rms.update(trunc_obs)
             trunc_obs = np.clip((trunc_obs - self.ob_rms.mean) / np.sqrt(self.ob_rms.var + self.epsilon), -self.clipob, self.clipob)
-            obs[:, :self.size_obs_to_norm] = trunc_obs
+            obs[:, :self.size_obs_to_norm] = trunc_obs            
             return obs
         else:
             return obs
@@ -305,6 +316,13 @@ class VecNormalize(RobotVecEnv):
         if self.ret_rms:
             self.ret_rms.update(self.ret)
             rews = np.clip(rews / np.sqrt(self.ret_rms.var + self.epsilon), -self.cliprew, self.cliprew)
+
+            # config.tensorboard.add_scalar("normalize/ob_rms_mean", self.ob_rms.mean.mean(), self.i)
+            # config.tensorboard.add_scalar("normalize/ob_rms_var", self.ob_rms.var.mean(), self.i)
+            # config.tensorboard.add_scalar("normalize/ret_rms_mean", self.ret_rms.mean.mean(), self.i)
+            # config.tensorboard.add_scalar("normalize/ret_rms_var", self.ret_rms.var.mean(), self.i)
+            # self.i += 1
+            
             return rews
         else:
             return rews
