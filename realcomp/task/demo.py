@@ -44,7 +44,7 @@ def make_env(env_id):
 env_id = "REALComp-v0"
 envs = [make_env(env_id) for e in range(config.num_envs)]
 envs = RobotVecEnv(envs, keys=["joint_positions", "touch_sensors"]) # Add 'retina' and/or 'touch_sensors' if needed
-envs = VecNormalize(envs, size_obs_to_norm = 13 + 3*3, ret=False)
+envs = VecNormalize(envs, size_obs_to_norm = 13 + 3*3, ret=True)
 
 loss_function = torch.nn.MSELoss()
 
@@ -130,6 +130,7 @@ def demo_run():
     some_state = np.zeros_like(reward, dtype=np.float64)
     time_since_last_touch = 0
     touches = 0
+    new_episode = True
 
     if config.model_to_load:
         controller.load_models(config.model_to_load)
@@ -139,6 +140,11 @@ def demo_run():
             # time.sleep(0.05)
             # if config.save_every and frame and frame % config.save_every == 0:
             #     controller.save_models("models.pth")
+
+            if new_episode:
+                new_episode = False
+                # Add things : change current goal, etc
+                pass
 
             action = controller.step(observation, reward, done, test=False)
 
@@ -169,10 +175,12 @@ def demo_run():
                 if any(had_contact) and (frame % config.frames_per_action == 0):
                     done = np.ones(config.num_envs)
                     observation = envs.reset(config.random_reset)
+                    new_episode = True
 
             if (frame > config.noop_steps) and ((frame - config.noop_steps) % (config.frames_per_action * config.actions_per_episode) == 0):
                 done = np.ones(config.num_envs)
                 observation = envs.reset(config.random_reset)
+                new_episode = True
                 
     # controller.save_models("models.pth")
 
@@ -209,11 +217,11 @@ def demo_run():
             observation, reward, done, _ = env.step(action)
 
 
-def showoff(controller):
+def showoff(controller, target="orange", punished_objects=["mustard", "tomato"]):
 
     envs = [make_env(env_id)]
     envs = RobotVecEnv(envs, keys=["joint_positions", "touch_sensors"]) # Add 'retina' and/or 'touch_sensors' if needed
-    envs = VecNormalize(envs, size_obs_to_norm = 13 + 3*3, ret=False)
+    envs = VecNormalize(envs, size_obs_to_norm = 13 + 3*3, ret=True)
 
     envs.render('human')
 
@@ -226,7 +234,7 @@ def showoff(controller):
         action = controller.step(observation, reward, done, test=True)
         observation, reward, done, _ = envs.step(action.cpu())
 
-        good_contacts, bad_contacts = get_contacts(envs, "orange", ["mustard", "tomato"])
+        good_contacts, bad_contacts = get_contacts(envs, target, punished_objects)
 
         if (frame > config.noop_steps and frame % 80 == 0) or (good_contacts.max() and config.reset_on_touch):
             observation = envs.reset(config.random_reset)
@@ -287,6 +295,9 @@ def update_reward(envs, frame, reward, some_state, target_object="orange", punis
 
     #assert frame <= config.noop_steps or reward.mean() > 0        
     reward = reward * 0.01
+
+    reward = envs._rewfilt(reward)
+    
     return reward, good_contacts, some_state
 
 
