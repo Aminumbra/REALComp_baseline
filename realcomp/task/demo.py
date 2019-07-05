@@ -14,7 +14,7 @@ parentdir = os.path.dirname(os.path.dirname(currentdir))
 os.sys.path.insert(0, parentdir)
 # from my_controller import MyController
 from realcomp.task.PPOAgent import PPOAgent, CNN
-from MultiprocessEnv import VecNormalize
+from MultiprocessEnv import RobotVecEnv, VecNormalize
 from train_cnn import train_cnn, test_cnn
 import torch.optim as optim
 import torch
@@ -43,7 +43,8 @@ def make_env(env_id):
 
 env_id = "REALComp-v0"
 envs = [make_env(env_id) for e in range(config.num_envs)]
-envs = VecNormalize(envs, keys=["joint_positions"], ret=True)  # Add 'retina' and/or 'touch_sensors' if needed
+envs = RobotVecEnv(envs, keys=["joint_positions", "touch_sensors"]) # Add 'retina' and/or 'touch_sensors' if needed
+envs = VecNormalize(envs, size_obs_to_norm = 13 + 3*3, ret=True)
 
 loss_function = torch.nn.MSELoss()
 
@@ -55,7 +56,7 @@ def demo_run():
     # env = gym.make('REALComp-v0')
     # controller = Controller(env.action_space)
     controller = PPOAgent(action_space=envs.action_space,
-                          size_obs=12 * config.observations_to_stack,
+                          size_obs=(13 + 3*3)  * config.observations_to_stack, #13 : joints + sensors; 3*3 : 3 coordinates per object, 3 objects
                           shape_pic=None,#(72, 144, 3),  # As received from the wrapper
                           size_layers=[12, 12],
                           size_cnn_output=2,
@@ -165,10 +166,14 @@ def demo_run():
 
 
             if config.reset_on_touch:
-                if any(had_contact) and np.random.rand() < 0.9 and frame % config.frames_per_action == 0: # We do not reset each time, so we learn how to "stick" to the target
+                if any(had_contact) and (frame % config.frames_per_action == 0):
                     done = np.ones(config.num_envs)
                     observation = envs.reset(config.random_reset)
 
+            if (frame > config.noop_steps) and ((frame - config.noop_steps) % (config.frames_per_action * config.actions_per_episode) == 0):
+                done = np.ones(config.num_envs)
+                observation = envs.reset(config.random_reset)
+                
     # controller.save_models("models.pth")
 
     config.tensorboard.close()
@@ -205,9 +210,10 @@ def demo_run():
 
 
 def showoff(controller):
-    config.wtcheat = False
+
     envs = [make_env(env_id)]
-    envs = VecNormalize(envs, keys=["joint_positions"])  # Add 'retina' and/or 'touch_sensors' if needed
+    envs = RobotVecEnv(envs, keys=["joint_positions", "touch_sensors"]) # Add 'retina' and/or 'touch_sensors' if needed
+    envs = VecNormalize(envs, size_obs_to_norm = 13 + 3*3, ret=True)
 
     envs.render('human')
 
@@ -220,15 +226,16 @@ def showoff(controller):
         action = controller.step(observation, reward, done, test=True)
         observation, reward, done, _ = envs.step(action.cpu())
 
-        contacts = get_contacts(envs, "orange")
+        good_contacts, bad_contacts = get_contacts(envs, "orange", ["mustard", "tomato"])
 
-        if (frame > config.noop_steps and frame % 80 == 0) or (contacts.max() and config.reset_on_touch):
+        if (frame > config.noop_steps and frame % 80 == 0) or (good_contacts.max() and config.reset_on_touch):
             observation = envs.reset(config.random_reset)
             done = np.ones(1)
 
 
-def get_contacts(envs, target_object):
-    had_contact = np.full(len(envs), False)
+def get_contacts(envs, target_object, punished_objects):
+    good_contacts = np.full(len(envs), False)
+    bad_contacts  = np.full(len(envs), False)
     envs_contacts = envs.get_contacts()
     robot_useful_parts = ["finger_00", "finger_01", "finger_10", "finger_11"]  # Only care about FINGER contacts
 
@@ -238,13 +245,15 @@ def get_contacts(envs, target_object):
                 if robot_part in robot_useful_parts:  # We are checking if the 'fingers' touched something
                     objects_touched = contacts[robot_part]
                     if any(object_touched == target_object for object_touched in objects_touched):
-                        had_contact[i] = True
-                        break
+                        good_contacts[i] = True
+                    for punished_object in punished_objects:
+                        if any(object_touched == punished_object for object_touched in objects_touched):
+                            bad_contacts[i] = True
 
-    return had_contact
+    return good_contacts, bad_contacts
 
 
-def update_reward(envs, frame, reward, some_state, goal=None, target_object="orange"):
+def update_reward(envs, frame, reward, some_state, target_object="orange", punished_objects=["mustard", "tomato"]):
     obj_init_pos = np.ndarray((3, len(envs), 3))
     obj_cur_pos = np.ndarray((3, len(envs), 3))
 
@@ -255,7 +264,7 @@ def update_reward(envs, frame, reward, some_state, goal=None, target_object="ora
         for i, obj in enumerate(objects_names):
             obj_init_pos[i] = envs.get_obj_pos(obj)  # We associate to the i-th object an array of length len(envs),  whose elements are positions (3-tuples)
 
-    had_contact = get_contacts(envs, target_object)
+    good_contacts, bad_contacts = get_contacts(envs, target_object, punished_objects)
     robot_useful_parts = ["finger_00", "finger_01", "finger_10", "finger_11"]  # 4 fingers + the last part of the robot (~ "its hand")
 
     if frame > config.noop_steps:
@@ -270,13 +279,13 @@ def update_reward(envs, frame, reward, some_state, goal=None, target_object="ora
         some_state += reward
         reward = some_state.copy()
 
-        if not frame % config.frames_per_action: #Only interested in the final step of the action for the contact with the target
-            reward = 1e-6 + 100 * had_contact #reward += 100 * had_contact  # Add an extra-reward for touching the orange
+        if not frame % config.frames_per_action: # Only interested in the final step of the action for the contact with the target
+            reward += 100 * good_contacts - 400 * bad_contacts  # Add an extra-reward for touching the target, and a penalty for touching something else
             some_state.fill(0)
 
-    assert frame <= config.noop_steps or reward.mean() > 0
+    #assert frame <= config.noop_steps or reward.mean() > 0        
     reward = reward * 0.01
-    return reward, had_contact, some_state
+    return reward, good_contacts, some_state
 
 
 if __name__ == "__main__":

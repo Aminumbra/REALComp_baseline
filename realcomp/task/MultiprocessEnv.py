@@ -15,11 +15,8 @@ def worker(remote, parent_remote, env_fn_wrapper):
                 ob = env.reset()
             remote.send((ob, reward, done, info))
         elif cmd == 'reset':
-            if data == 'random':
-                rand_x = np.random.uniform(low=-0.15, high=0.05)
-                rand_y = np.random.uniform(low=-0.40, high=0.40)
-                env.robot.object_poses["orange"] = [rand_x, rand_y, 0.55, 0.00, 0.00, 0.00]
-                ob = env.reset()
+            if data:
+                ob = env.reset(data)
             else:
                 ob = env.reset()
             remote.send(ob)
@@ -209,10 +206,12 @@ class RobotVecEnv(SubprocVecEnv):
         converted_obs = []
 
         orange_pos = self.get_obj_pos("orange")
+        mustard_pos = self.get_obj_pos("mustard")
+        tomato_pos = self.get_obj_pos("tomato")
         
         for i, o in enumerate(obs):
             converted_obs.append(np.concatenate([np.ravel(o[k]) for k in self.keys if k != "retina"]))
-            converted_obs[-1] = np.concatenate((converted_obs[-1], orange_pos[i]))
+            converted_obs[-1] = np.concatenate((converted_obs[-1], orange_pos[i], mustard_pos[i], tomato_pos[i]))
 
             if "retina" in self.keys:
                 image = o["retina"]
@@ -264,8 +263,10 @@ class VecNormalize(RobotVecEnv):
     and returns from an environment.
     """
 
-    def __init__(self, env_fns, keys=["joint_positions", "touch_sensors"], ob=True, ret=True, clipob=10., cliprew=10., gamma=0.99, epsilon=1e-8, use_tf=False):
-        RobotVecEnv.__init__(self, env_fns, keys=keys)
+    def __init__(self, envs, size_obs_to_norm=13, ob=True, ret=True, clipob=10., cliprew=10., gamma=0.99, epsilon=1e-8, use_tf=False):
+        self.envs = envs
+        self.size_obs_to_norm = size_obs_to_norm
+        
         if use_tf:
             from baselines.common.running_mean_std import TfRunningMeanStd
             self.ob_rms = TfRunningMeanStd(shape=self.observation_space.shape, scope='ob_rms') if ob else None
@@ -282,7 +283,7 @@ class VecNormalize(RobotVecEnv):
         self.epsilon = epsilon
 
     def step_wait(self):
-        obs, rews, news, infos = super().step_wait()
+        obs, rews, news, infos = self.envs.step_wait()
         self.ret = self.ret * self.gamma + rews
         obs = self._obfilt(obs)
         if self.ret_rms:
@@ -294,15 +295,29 @@ class VecNormalize(RobotVecEnv):
     def _obfilt(self, obs):
         # Modified this function so it only normalizes the first 13 values of the observation !
         if self.ob_rms:
-            trunc_obs = obs[:, :9]
+            trunc_obs = obs[:, :self.size_obs_to_norm]
             self.ob_rms.update(trunc_obs)
             trunc_obs = np.clip((trunc_obs - self.ob_rms.mean) / np.sqrt(self.ob_rms.var + self.epsilon), -self.clipob, self.clipob)
-            obs[:, :9] = trunc_obs
+            obs[:, :self.size_obs_to_norm] = trunc_obs
             return obs
         else:
             return obs
 
     def reset(self, data=None):
         self.ret = np.zeros(self.num_envs)
-        obs = super().reset(data)
+        obs = self.envs.reset(data)
         return self._obfilt(obs)
+
+    def __getattr__(self, attr):
+        orig_attr = self.envs.__getattribute__(attr)
+        if callable(orig_attr):
+            def hooked(*args, **kwargs):
+                print("I'm THERE")
+                result = orig_attr(*args, **kwargs)
+                # prevent wrapped_class from becoming unwrapped
+                if result == self.wrapped_class:
+                    return self
+                return result
+            return hooked
+        else:
+            return orig_attr

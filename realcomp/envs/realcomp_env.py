@@ -95,7 +95,13 @@ class REALCompEnv(MJCFBaseBulletEnv):
         return SingleRobotEmptyScene(bullet_client, gravity=9.81,
                                      timestep=0.005, frame_skip=1)
 
-    def reset(self):
+    def reset(self, mode=None):
+
+        if mode == "random":
+            for obj in ["tomato", "orange", "mustard"]:
+                rand_x = np.random.uniform(low=-0.15, high=0.05)
+                rand_y = np.random.uniform(low=-0.40, high=0.40)
+                self.robot.object_poses[obj] = [rand_x, rand_y, 0.55, 0.00, 0.00, 0.00]
 
         super(REALCompEnv, self).reset()
         self._p.setGravity(0., 0., -9.81)
