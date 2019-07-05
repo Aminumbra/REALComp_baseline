@@ -44,7 +44,7 @@ def make_env(env_id):
 env_id = "REALComp-v0"
 envs = [make_env(env_id) for e in range(config.num_envs)]
 envs = RobotVecEnv(envs, keys=["joint_positions", "touch_sensors"]) # Add 'retina' and/or 'touch_sensors' if needed
-envs = VecNormalize(envs, size_obs_to_norm = 13 + 3*3, ret=True)
+envs = VecNormalize(envs, size_obs_to_norm = 13 + 3*3, ret=False)
 
 loss_function = torch.nn.MSELoss()
 
@@ -58,7 +58,7 @@ def demo_run():
     controller = PPOAgent(action_space=envs.action_space,
                           size_obs=(13 + 3*3)  * config.observations_to_stack, #13 : joints + sensors; 3*3 : 3 coordinates per object, 3 objects
                           shape_pic=None,#(72, 144, 3),  # As received from the wrapper
-                          size_layers=[12, 12],
+                          size_layers=[32, 64, 16],
                           size_cnn_output=2,
                           actor_lr=1e-4,
                           critic_lr=1e-3,
@@ -213,7 +213,7 @@ def showoff(controller):
 
     envs = [make_env(env_id)]
     envs = RobotVecEnv(envs, keys=["joint_positions", "touch_sensors"]) # Add 'retina' and/or 'touch_sensors' if needed
-    envs = VecNormalize(envs, size_obs_to_norm = 13 + 3*3, ret=True)
+    envs = VecNormalize(envs, size_obs_to_norm = 13 + 3*3, ret=False)
 
     envs.render('human')
 
@@ -246,9 +246,11 @@ def get_contacts(envs, target_object, punished_objects):
                     objects_touched = contacts[robot_part]
                     if any(object_touched == target_object for object_touched in objects_touched):
                         good_contacts[i] = True
-                    for punished_object in punished_objects:
-                        if any(object_touched == punished_object for object_touched in objects_touched):
-                            bad_contacts[i] = True
+                        
+                for punished_object in punished_objects: # No contacts AT ALL, not only considering fingers there !
+                    objects_touched = contacts[robot_part]
+                    if any(object_touched == punished_object for object_touched in objects_touched):
+                        bad_contacts[i] = True
 
     return good_contacts, bad_contacts
 
@@ -280,7 +282,7 @@ def update_reward(envs, frame, reward, some_state, target_object="orange", punis
         reward = some_state.copy()
 
         if not frame % config.frames_per_action: # Only interested in the final step of the action for the contact with the target
-            reward += 100 * good_contacts - 400 * bad_contacts  # Add an extra-reward for touching the target, and a penalty for touching something else
+            reward += 50 * good_contacts - 100 * bad_contacts  # Add an extra-reward for touching the target, and a penalty for touching something else
             some_state.fill(0)
 
     #assert frame <= config.noop_steps or reward.mean() > 0        

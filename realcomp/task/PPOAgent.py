@@ -33,7 +33,7 @@ class ModelActor(nn.Module):
             self.layers.append(nn.ReLU())
 
         self.layers.append(nn.Linear(size_layers[num_hidden - 1], num_actions))
-
+                                   
         self.log_std = nn.Parameter(torch.ones(1, num_actions) * log_std)
         self.num_actions = num_actions
 
@@ -48,8 +48,9 @@ class ModelActor(nn.Module):
         if mu.dim() > 1:
             std = std.expand_as(mu)
 
+        mu = torch.tanh(mu) * np.pi / 2
         dist = Normal(mu, std, validate_args=True)
-
+                           
         return dist
 
 
