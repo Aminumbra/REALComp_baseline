@@ -126,3 +126,5 @@ dmypy.json
 docs/
 *.pth
 realcomp/task/runs/
+realcomp/task/old_runs*
+*~

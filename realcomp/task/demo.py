@@ -21,6 +21,9 @@ import torch
 
 objects_names = ["mustard", "tomato", "orange"]
 
+target = "mustard"
+punished_objects = ["tomato", "orange"]
+
 
 def euclidean_distance(x, y):
     if len(x.shape) <= 1:
@@ -56,9 +59,9 @@ def demo_run():
     # env = gym.make('REALComp-v0')
     # controller = Controller(env.action_space)
     controller = PPOAgent(action_space=envs.action_space,
-                          size_obs=(13 + 3*3)  * config.observations_to_stack, #13 : joints + sensors; 3*3 : 3 coordinates per object, 3 objects
+                          size_obs=(13 + 3*3) * config.observations_to_stack, #13 : joints + sensors; 3*3 : 3 coordinates per object, 3 objects
                           shape_pic=None,#(72, 144, 3),  # As received from the wrapper
-                          size_layers=[32, 64, 16],
+                          size_layers=[256, 64],
                           size_cnn_output=2,
                           actor_lr=1e-4,
                           critic_lr=1e-3,
@@ -127,7 +130,7 @@ def demo_run():
     done = np.zeros(config.num_envs)
 
     # intrinsic phase
-    some_state = np.zeros_like(reward, dtype=np.float64)
+    acc_reward = np.zeros_like(reward, dtype=np.float64)
     time_since_last_touch = 0
     touches = 0
     new_episode = True
@@ -150,15 +153,15 @@ def demo_run():
                 # Add things : change current goal, etc
                 pass
 
-            action = controller.step(observation, reward, done, test=False)
+            action = controller.step(observation, acc_reward, done, test=False)
 
             observation, reward, done, _ = envs.step(action.cpu())
-            reward, had_contact, some_state = update_reward(envs, frame, reward, some_state)
+            reward, had_contact, acc_reward = update_reward(envs, frame, reward, acc_reward, target_object=target, punished_objects=punished_objects, action=action.cpu().numpy())
             
             time_since_last_touch += 1
 
-            config.tensorboard.add_scalar('intrinsic/rewards', reward.mean(), frame)
-            config.tensorboard.add_scalar('intrinsic/did_it_touch', had_contact.max(), frame)
+            config.tensorboard.add_scalar('Rewards/frame_rewards', reward.mean(), frame)
+            
             if had_contact.max():
                 config.tensorboard.add_scalar('intrinsic/time_since_last_touch', time_since_last_touch, touches)
                 touches += 1
@@ -171,12 +174,16 @@ def demo_run():
                 picture = picture.permute(0, 3, 1, 2)
                 cnn_output = controller.cnn(picture.to(config.device))
                 cnn_output = cnn_output.detach()
-                loss = loss_function(cnn_output.to(torch.device("cpu")), torch.FloatTensor(envs.get_obj_pos("orange")[:, 0:2]).to(torch.device("cpu"))).to(torch.device("cpu")).mean()
+                loss = loss_function(cnn_output.to(torch.device("cpu")), torch.FloatTensor(envs.get_obj_pos(target)[:, 0:2]).to(torch.device("cpu"))).to(torch.device("cpu")).mean()
                 config.tensorboard.add_scalar('train/Fixed_CNN_loss', loss, frame)
 
 
-            if config.reset_on_touch:
-                if any(had_contact) and (frame % config.frames_per_action == 0):
+            if (frame > config.noop_steps) and ((frame + 1 - config.noop_steps) % config.frames_per_action == 0): # True on the last frame of an action
+
+                config.tensorboard.add_scalar('intrinsic/actions_magnitude', abs(action).mean(), frame / config.frames_per_action)
+                config.tensorboard.add_scalar('Rewards/action_rewards', acc_reward.mean(), frame / config.frames_per_action)
+                
+                if config.reset_on_touch and any(had_contact):
                     done = np.ones(config.num_envs)
                     observation = envs.reset(config.random_reset)
                     new_episode = True
@@ -192,7 +199,7 @@ def demo_run():
     print("Starting extrinsic phase...")
     if config.enjoy:
         input("Press enter to test the agent and visualize its actions !")
-        showoff(controller)
+        showoff(controller, target=target, punished_objects=punished_objects)
 
     # extrinsic phase
     env = gym.make('REALComp-v0')
@@ -238,13 +245,11 @@ def showoff(controller, target="orange", punished_objects=["mustard", "tomato"])
         action = controller.step(observation, reward, done, test=True)
         observation, reward, done, _ = envs.step(action.cpu())
 
-        good_contacts, bad_contacts = get_contacts(envs, target, punished_objects)
-
-        if (frame > config.noop_steps and frame % 80 == 0) or (good_contacts.max() and config.reset_on_touch):
+        if (frame > config.noop_steps) and ((frame - config.noop_steps) % (config.frames_per_action * config.actions_per_episode) == 0):
+            done = np.ones(config.num_envs)
             observation = envs.reset(config.random_reset)
-            done = np.ones(1)
 
-
+            
 def get_contacts(envs, target_object, punished_objects):
     good_contacts = np.full(len(envs), False)
     bad_contacts  = np.full(len(envs), False)
@@ -254,20 +259,19 @@ def get_contacts(envs, target_object, punished_objects):
     for i, contacts in enumerate(envs_contacts):
         if contacts:
             for robot_part in contacts:
+                objects_touched = contacts[robot_part]
                 if robot_part in robot_useful_parts:  # We are checking if the 'fingers' touched something
-                    objects_touched = contacts[robot_part]
-                    if any(object_touched == target_object for object_touched in objects_touched):
+                    if target_object in objects_touched:
                         good_contacts[i] = True
                         
                 for punished_object in punished_objects: # No contacts AT ALL, not only considering fingers there !
-                    objects_touched = contacts[robot_part]
-                    if any(object_touched == punished_object for object_touched in objects_touched):
+                    if punished_object in objects_touched:
                         bad_contacts[i] = True
 
     return good_contacts, bad_contacts
 
 
-def update_reward(envs, frame, reward, some_state, target_object="orange", punished_objects=["mustard", "tomato"]):
+def update_reward(envs, frame, reward, acc_reward, target_object="orange", punished_objects=["mustard", "tomato"], action=0):
 
     if frame == 0:
         pass
@@ -281,27 +285,32 @@ def update_reward(envs, frame, reward, some_state, target_object="orange", punis
         distance_target = np.minimum.reduce([euclidean_distance(target_pos, envs.get_part_pos(robot_part)) for robot_part in robot_useful_parts])
 
         closeness = np.power(distance_target + 1e-6, -2)
-        reward = np.clip(closeness, 0, 10)
+        reward = closeness #np.clip(closeness, 0, 100)
+        reward -= 20 * abs(action).mean(1)
         
-        # touch_sensors = envs.get_touch_sensors()
-        # sensors_activated = np.array(np.max(touch_sensors, axis=1), dtype=bool) # Array of length num_envs, containing True if one of the sensors > 0, False otherwise
-        # lift_reward = target_pos[:, 2] * sensors_activated
+        #touch_sensors = envs.get_touch_sensors()
+        #sensors_activated = np.array(np.max(touch_sensors, axis=1), dtype=bool) # Array of length num_envs, containing True if one of the sensors > 0, False otherwise
+        #lift_reward = target_pos[:, 2] * sensors_activated
+        #config.tensorboard.add_scalar("Rewards/Lift_reward", lift_reward.mean(), frame)
         
-        some_state += reward
-        #some_state += lift_reward * 400
-        reward = some_state.copy()
+        #reward -= 30 * bad_contacts  # The penalty for touching something else is always active, not only on last frame
+        #reward += lift_reward * 100
+
+        config.tensorboard.add_scalar("Rewards/Good_contacts", good_contacts.mean(), frame)
+        config.tensorboard.add_scalar("Rewards/Bad_contacts", bad_contacts.mean(), frame)
 
         if not frame % config.frames_per_action: # Only interested in the final step of the action for the contact with the target
-            reward += 50 * good_contacts - 100 * bad_contacts  # Add an extra-reward for touching the target, and a penalty for touching something else
-            some_state.fill(0)
+            #reward += 100 * good_contacts  # Add an extra-reward for touching the target
+            acc_reward.fill(0)
 
-    #assert frame <= config.noop_steps or reward.mean() > 0        
+    #assert frame <= config.noop_steps or reward.mean() > 0
     reward = reward * 0.01
-
-    envs.ret = envs.ret * envs.gamma + reward
-    reward = envs._rewfilt(reward)
+    acc_reward = reward #TODO : rechange it to be a acc_reward += reward
+    if (frame > config.noop_steps and ((frame + 1 - config.noop_steps) % config.frames_per_action == 0)): # True at the last frame of an action
+        envs.ret = envs.ret * envs.gamma + acc_reward
+        acc_reward = envs._rewfilt(acc_reward)
     
-    return reward, good_contacts, some_state
+    return reward, good_contacts, acc_reward
 
 
 if __name__ == "__main__":

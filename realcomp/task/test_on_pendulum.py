@@ -3,6 +3,7 @@ import torch
 from PPOAgent import PPOAgent
 import sys, signal
 from MultiprocessEnv import SubprocVecEnv
+import tqdm
 
 Controller = PPOAgent
 
@@ -46,28 +47,29 @@ def convert_observation_to_input(obs):
     return torch.FloatTensor(obs)
 
 
-controller = Controller(action_space      = env.action_space,
-                        size_obs          = size_obs,
-                        size_goal         = 0,
-                        size_layers       = [64, 64],
-                        actor_lr          = 1e-4,
-                        critic_lr         = 1e-3,
-                        gamma             = 0.99,
-                        gae_lambda        = 0.95,
-                        epochs            = 10,
-                        horizon           = 64,
-                        mini_batch_size   = 16,
-                        frames_per_action = 1,
-                        init_wait         = 0,
-                        clip              = 0.2,
-                        entropy_coeff     = 0.005,
-                        log_std           = 0.,
-                        use_parallel      = True,
-                        logs              = False,
-                        logs_dir          = "-pendulum")
+controller = PPOAgent(action_space=envs.action_space,
+                          size_obs=size_obs,
+                          shape_pic=None,
+                          size_layers=[256],
+                          size_cnn_output=2,
+                          actor_lr=1e-3,
+                          critic_lr=1e-3,
+                          value_loss_coeff=1.,
+                          gamma=0.99,
+                          gae_lambda=0.95,
+                          epochs=4,
+                          horizon=32,
+                          mini_batch_size=8,
+                          frames_per_action=1,
+                          init_wait=1,
+                          clip=0.2,
+                          entropy_coeff=0.01,
+                          log_std=0.,
+                          use_parallel=True,
+                          num_parallel=8,
+                          logs=True,
+                          )
 
-
-controller.convert_observation_to_input = convert_observation_to_input
 
 signal.signal(signal.SIGINT, signal.default_int_handler)
 
@@ -76,24 +78,45 @@ state  = envs.reset()
 reward = 0
 done   = 0
 
-frame = 0
+def showoff(envs, controller):
+    observation = envs.reset()
+    reward = None
+    done = [False]
 
+    controller.soft_reset()
+    controller.num_parallel = 1
+        
+    while not done[0]:
+        envs.render()
+        action = controller.step(observation, reward, done, test=True)
+        observation, reward, done, _ = envs.step(action.cpu())
+
+        
 try:
-    while frame < 20000:
-        frame += 1
-    
-        action = controller.step(state, reward, done)
+    for frame in tqdm.tqdm(range(200000)):
+            
+        action = controller.step(state, reward, done, test=False)
         
-        state, reward, done, _ = envs.step(action)
-        
-        if frame % 5000 == 0:
-            print("Frame ", frame)
-        
+        state, reward, done, _ = envs.step(action.cpu())
+
+    input("Press enter to visualize the agent !")
+
+    envs = [make_env("Pendulum-v0")]
+    envs = SubprocVecEnv(envs)
+
+    for _ in range(5):
+        showoff(envs, controller)
             
 except KeyboardInterrupt:
-    if controller.logs:
-        controller.writer.close()
+        
+    input("Press enter to visualize the agent !")
 
+    envs = [make_env("Pendulum-v0")]
+    envs = SubprocVecEnv(envs)
+
+    for _ in range(5):
+        showoff(envs, controller)
+        
     print("Exiting properly")
 
     sys.exit()

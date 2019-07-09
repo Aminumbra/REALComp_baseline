@@ -3,14 +3,17 @@
 from multiprocessing import Process, Pipe
 
 import numpy as np
+import torch
 
 def worker(remote, parent_remote, env_fn_wrapper):
     parent_remote.close()
     env = env_fn_wrapper.x()
+    position = torch.zeros(env.action_space.shape[0])
     while True:
         cmd, data = remote.recv()
         if cmd == 'step':
-            ob, reward, done, info = env.step(data)
+            position += data
+            ob, reward, done, info = env.step(position)
             if done:
                 ob = env.reset()
             remote.send((ob, reward, done, info))
@@ -19,6 +22,7 @@ def worker(remote, parent_remote, env_fn_wrapper):
                 ob = env.reset(data)
             else:
                 ob = env.reset()
+            position = torch.zeros(env.action_space.shape[0])
             remote.send(ob)
         elif cmd == 'reset_task':
             ob = env.reset_task()
@@ -175,6 +179,11 @@ class SubprocVecEnv(VecEnv):
             remote.send(('reset_task', None))
         return np.stack([remote.recv() for remote in self.remotes])
 
+    def render(self, mode=None):
+        for remote in self.remotes:
+            remote.send(('render', mode))
+            break
+
     def close(self):
         if self.closed:
             return
@@ -259,11 +268,6 @@ class RobotVecEnv(SubprocVecEnv):
         for remote in self.remotes:
             remote.send(('reset', data))
         return self.obs_to_array([remote.recv() for remote in self.remotes])
-
-    def render(self, mode=None):
-        for remote in self.remotes:
-            remote.send(('render', mode))
-            break
 
 
 class VecNormalize(RobotVecEnv):

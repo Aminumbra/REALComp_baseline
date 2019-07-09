@@ -48,7 +48,7 @@ class ModelActor(nn.Module):
         if mu.dim() > 1:
             std = std.expand_as(mu)
 
-        mu = torch.tanh(mu) * np.pi / 2
+        #mu = torch.tanh(mu) * np.pi / 2
         dist = Normal(mu, std, validate_args=True)
                            
         return dist
