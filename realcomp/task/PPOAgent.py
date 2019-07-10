@@ -26,11 +26,11 @@ class ModelActor(nn.Module):
         num_hidden = len(size_layers)
 
         self.layers.append(nn.Linear(size_obs, size_layers[0]))
-        self.layers.append(nn.ReLU())
+        self.layers.append(nn.Tanh())
 
         for i in range(num_hidden - 1):
             self.layers.append(nn.Linear(size_layers[i], size_layers[i + 1]))
-            self.layers.append(nn.ReLU())
+            self.layers.append(nn.Tanh())
 
         self.layers.append(nn.Linear(size_layers[num_hidden - 1], num_actions))
                                    
@@ -53,7 +53,7 @@ class ModelActor(nn.Module):
                            
         return dist
 
-
+# ReLU and not tanh, as suggested by http://www.dei.unipd.it/~toselloe/pdf/IR0S18_Franceschetti.pdf, page 6
 class ModelCritic(nn.Module):
     def __init__(self,
                  size_obs=13,
@@ -390,6 +390,7 @@ class PPOAgent:
         self.already_waited = 0
 
         self.first_step = True
+        self.observations_history = collections.deque(maxlen=config.observations_to_stack)
 
     ######################################################################
 
@@ -523,7 +524,7 @@ class PPOAgent:
         self.observations_history.append(state_t)
 
         if len(self.observations_history) > 1:
-            state = torch.cat(tuple(self.observations_history), dim=1)
+            state = torch.cat(tuple(torch.FloatTensor(self.observations_history)), dim=1)
         else:
             state, = self.observations_history
 

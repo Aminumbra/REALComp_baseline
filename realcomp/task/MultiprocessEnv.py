@@ -13,16 +13,19 @@ def worker(remote, parent_remote, env_fn_wrapper):
         cmd, data = remote.recv()
         if cmd == 'step':
             position += data
+            position = torch.clamp(position, -np.pi / 2, np.pi / 2)
+            position[-2:] = torch.clamp(position[-2:], 0)
             ob, reward, done, info = env.step(position)
             if done:
                 ob = env.reset()
+                position = position * 0.
             remote.send((ob, reward, done, info))
         elif cmd == 'reset':
             if data:
                 ob = env.reset(data)
             else:
                 ob = env.reset()
-            position = torch.zeros(env.action_space.shape[0])
+            position = position * 0.
             remote.send(ob)
         elif cmd == 'reset_task':
             ob = env.reset_task()
@@ -219,12 +222,13 @@ class RobotVecEnv(SubprocVecEnv):
         converted_obs = []
 
         orange_pos = self.get_obj_pos("orange")
-        mustard_pos = self.get_obj_pos("mustard")
-        tomato_pos = self.get_obj_pos("tomato")
+        #mustard_pos = self.get_obj_pos("mustard")
+        #tomato_pos = self.get_obj_pos("tomato")
         
         for i, o in enumerate(obs):
             converted_obs.append(np.concatenate([np.ravel(o[k]) for k in self.keys if k != "retina"]))
-            converted_obs[-1] = np.concatenate((converted_obs[-1], orange_pos[i], mustard_pos[i], tomato_pos[i]))
+            # converted_obs[-1] = np.concatenate((converted_obs[-1], orange_pos[i], mustard_pos[i], tomato_pos[i]))
+            converted_obs[-1] = np.concatenate((converted_obs[-1], orange_pos[i]))
 
             if "retina" in self.keys:
                 image = o["retina"]
@@ -320,13 +324,6 @@ class VecNormalize(RobotVecEnv):
         if self.ret_rms:
             self.ret_rms.update(self.ret)
             rews = np.clip(rews / np.sqrt(self.ret_rms.var + self.epsilon), -self.cliprew, self.cliprew)
-
-            # config.tensorboard.add_scalar("normalize/ob_rms_mean", self.ob_rms.mean.mean(), self.i)
-            # config.tensorboard.add_scalar("normalize/ob_rms_var", self.ob_rms.var.mean(), self.i)
-            # config.tensorboard.add_scalar("normalize/ret_rms_mean", self.ret_rms.mean.mean(), self.i)
-            # config.tensorboard.add_scalar("normalize/ret_rms_var", self.ret_rms.var.mean(), self.i)
-            # self.i += 1
-            
             return rews
         else:
             return rews
@@ -340,11 +337,10 @@ class VecNormalize(RobotVecEnv):
         orig_attr = self.envs.__getattribute__(attr)
         if callable(orig_attr):
             def hooked(*args, **kwargs):
-                print("I'm THERE")
                 result = orig_attr(*args, **kwargs)
                 # prevent wrapped_class from becoming unwrapped
-                if result == self.wrapped_class:
-                    return self
+                # if result == self.wrapped_class:
+                   # return self
                 return result
             return hooked
         else:

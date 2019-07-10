@@ -46,19 +46,19 @@ print(f"USING {device}")
 
 render = False
 noop_steps = 120
-frames_per_action = 3
-intrinsic_frames = 120000
+frames_per_action = 1
+intrinsic_frames = 150000
 # render_but_no_render = True
 enjoy = True
 wtcheat = True
 save_every = False
 extrinsic_trials = 10
 num_envs = 4
-observations_to_stack = 1
+observations_to_stack = 4
 pre_train_cnn = False
 reset_on_touch = False
-random_reset = "random"
-actions_per_episode = 30
+random_reset = None#"random"
+actions_per_episode = 60
 image_shape = (144, 72)
 lr = 3e-4
 ludicrous_speed = True

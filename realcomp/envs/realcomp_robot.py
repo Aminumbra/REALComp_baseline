@@ -18,10 +18,11 @@ class Kuka(URDFBasedRobot):
 
     object_poses = {
         "table": [0.00, 0.00, 0.00, 0.00, 0.00, 0.00],
-        "orange": [-0.10, 0.00, 0.55, 0.00, 0.00, 0.00],
-        "mustard": [0.00, -0.40, 0.55, 0.00, 0.00, 1.54],
-        "hammer": [0.00, 0.20, 0.55, 0.00, 0.00, 0.00],
-        "tomato": [-0.10, 0.40, 0.55, 0.00, 0.00, 0.00]}
+        "orange": [-0.10, 0.00, 0.47, 0.00, 0.00, 0.00],
+        #"mustard": [0.00, -0.40, 0.51, 0.00, 0.00, 1.54],
+        "hammer": [0.00, 0.20, 0.55, 0.00, 0.00, 0.00]}
+        #"tomato": [-0.10, 0.40, 0.49, 0.00, 0.00, 0.00]
+        #"tomato": [-0.10, 0.00, 0.49, 0.00, 0.00, 0.00]} # centered version
 
     num_joints = 9
     num_kuka_joints = 7
@@ -105,7 +106,7 @@ class Kuka(URDFBasedRobot):
                     force = np.max([cnt[1] for cnt in cnts])
                     sensors[i] = force
 
-            return sensors
+        return sensors
 
     def robot_specific_reset(self, bullet_client):
 

@@ -21,8 +21,8 @@ import torch
 
 objects_names = ["mustard", "tomato", "orange"]
 
-target = "mustard"
-punished_objects = ["tomato", "orange"]
+target = "orange"
+punished_objects = []
 
 
 def euclidean_distance(x, y):
@@ -47,7 +47,7 @@ def make_env(env_id):
 env_id = "REALComp-v0"
 envs = [make_env(env_id) for e in range(config.num_envs)]
 envs = RobotVecEnv(envs, keys=["joint_positions", "touch_sensors"]) # Add 'retina' and/or 'touch_sensors' if needed
-envs = VecNormalize(envs, size_obs_to_norm = 13 + 3*3, ret=True)
+envs = VecNormalize(envs, size_obs_to_norm = 13 + 3*1, ret=True)
 
 loss_function = torch.nn.MSELoss()
 
@@ -59,17 +59,17 @@ def demo_run():
     # env = gym.make('REALComp-v0')
     # controller = Controller(env.action_space)
     controller = PPOAgent(action_space=envs.action_space,
-                          size_obs=(13 + 3*3) * config.observations_to_stack, #13 : joints + sensors; 3*3 : 3 coordinates per object, 3 objects
+                          size_obs=(13 + 3*1) * config.observations_to_stack, #13 : joints + sensors; 3*1 : 3 coordinates per object, 1 object here
                           shape_pic=None,#(72, 144, 3),  # As received from the wrapper
-                          size_layers=[256, 64],
+                          size_layers=[256, 128],
                           size_cnn_output=2,
                           actor_lr=1e-4,
                           critic_lr=1e-3,
                           value_loss_coeff=1.,
                           gamma=0.95,
                           gae_lambda=0.95,
-                          epochs=10,
-                          horizon=32,
+                          epochs=5,
+                          horizon=64,
                           mini_batch_size=8,
                           frames_per_action=config.frames_per_action,
                           init_wait=config.noop_steps,
@@ -135,6 +135,9 @@ def demo_run():
     touches = 0
     new_episode = True
 
+    init_position = envs.get_obj_pos(target)
+    goal_position = np.full((config.num_envs, 3), [-0.10, 0.40, 0.46]) # default tomato position, and close to the table
+
     if config.model_to_load:
         controller.load_models(config.model_to_load)
     else:
@@ -156,7 +159,15 @@ def demo_run():
             action = controller.step(observation, acc_reward, done, test=False)
 
             observation, reward, done, _ = envs.step(action.cpu())
-            reward, had_contact, acc_reward = update_reward(envs, frame, reward, acc_reward, target_object=target, punished_objects=punished_objects, action=action.cpu().numpy())
+            reward, had_contact, acc_reward = update_reward(envs,
+                                                            frame,
+                                                            reward,
+                                                            acc_reward,
+                                                            target=target,
+                                                            punished_objects=punished_objects,
+                                                            action=action.cpu().numpy(),
+                                                            init_position=init_position,
+                                                            goal_position=goal_position)
             
             time_since_last_touch += 1
 
@@ -188,7 +199,7 @@ def demo_run():
                     observation = envs.reset(config.random_reset)
                     new_episode = True
 
-            if (frame > config.noop_steps) and ((frame - config.noop_steps) % (config.frames_per_action * config.actions_per_episode) == 0):
+            if (frame > config.noop_steps) and ((frame + 1 - config.noop_steps) % (config.frames_per_action * config.actions_per_episode) == 0):
                 done = np.ones(config.num_envs)
                 observation = envs.reset(config.random_reset)
                 new_episode = True
@@ -232,7 +243,7 @@ def showoff(controller, target="orange", punished_objects=["mustard", "tomato"])
 
     envs = [make_env(env_id)]
     envs = RobotVecEnv(envs, keys=["joint_positions", "touch_sensors"]) # Add 'retina' and/or 'touch_sensors' if needed
-    envs = VecNormalize(envs, size_obs_to_norm = 13 + 3*3, ret=True)
+    envs = VecNormalize(envs, size_obs_to_norm = 13 + 3*1, ret=True)
 
     envs.render('human')
 
@@ -245,23 +256,33 @@ def showoff(controller, target="orange", punished_objects=["mustard", "tomato"])
         action = controller.step(observation, reward, done, test=True)
         observation, reward, done, _ = envs.step(action.cpu())
 
-        if (frame > config.noop_steps) and ((frame - config.noop_steps) % (config.frames_per_action * config.actions_per_episode) == 0):
+        #sensors = envs.get_touch_sensors()
+        #if any(sensors[0]):
+            # print(sensors[0])
+            # print(envs.get_contacts())
+
+        if (frame > config.noop_steps) and ((frame + 1 - config.noop_steps) % (config.frames_per_action * config.actions_per_episode) == 0):
             done = np.ones(config.num_envs)
             observation = envs.reset(config.random_reset)
 
+        if (frame > config.noop_steps) and ((frame + 1 - config.noop_steps) % config.frames_per_action == 0): # True on the last frame of an action
+            good_contacts, bad_contacts = get_contacts(envs, target, punished_objects=[], robot_useful_parts=["base"])
+            if config.reset_on_touch and any(good_contacts):
+                done = np.ones(config.num_envs)
+                observation = envs.reset(config.random_reset)
+
             
-def get_contacts(envs, target_object, punished_objects):
+def get_contacts(envs, target, punished_objects, robot_useful_parts=["finger_10", "finger_11"]):
     good_contacts = np.full(len(envs), False)
     bad_contacts  = np.full(len(envs), False)
     envs_contacts = envs.get_contacts()
-    robot_useful_parts = ["finger_00", "finger_01", "finger_10", "finger_11"]  # Only care about FINGER contacts
 
     for i, contacts in enumerate(envs_contacts):
         if contacts:
             for robot_part in contacts:
                 objects_touched = contacts[robot_part]
                 if robot_part in robot_useful_parts:  # We are checking if the 'fingers' touched something
-                    if target_object in objects_touched:
+                    if target in objects_touched:
                         good_contacts[i] = True
                         
                 for punished_object in punished_objects: # No contacts AT ALL, not only considering fingers there !
@@ -271,33 +292,40 @@ def get_contacts(envs, target_object, punished_objects):
     return good_contacts, bad_contacts
 
 
-def update_reward(envs, frame, reward, acc_reward, target_object="orange", punished_objects=["mustard", "tomato"], action=0):
+def update_reward(envs, frame, reward, acc_reward, init_position, goal_position, target="orange", punished_objects=["mustard", "tomato"], action=0):
 
     if frame == 0:
         pass
 
-    good_contacts, bad_contacts = get_contacts(envs, target_object, punished_objects)
-    robot_useful_parts = ["finger_00", "finger_01", "finger_10", "finger_11"]  # 4 fingers + the last part of the robot (~ "its hand")
-    target_pos = envs.get_obj_pos(target_object)
+    good_contacts, bad_contacts = get_contacts(envs, target, punished_objects, robot_useful_parts=["finger_10", "finger_11"])#["skin_00", "skin_01", "skin_10", "skin_11"])
+    robot_useful_parts = ["finger_10", "finger_11"]  # 4 fingers + the last part of the robot (~ "its hand")
+
+    good_contacts, bad_contacts = get_contacts(envs, target, punished_objects, robot_useful_parts)
+    
+    target_pos = envs.get_obj_pos(target)
 
     if frame > config.noop_steps:
 
-        distance_target = np.minimum.reduce([euclidean_distance(target_pos, envs.get_part_pos(robot_part)) for robot_part in robot_useful_parts])
+        distance_robot_target = np.minimum.reduce([euclidean_distance(target_pos, envs.get_part_pos(robot_part)) for robot_part in robot_useful_parts])
+        distance_target_goal  = euclidean_distance(target_pos, goal_position)
+        init_distance = euclidean_distance(init_position, goal_position)
+        
+        closeness = np.power(distance_robot_target + 1e-6, -2)
+        reward = np.clip(closeness, 0, 100)
 
-        closeness = np.power(distance_target + 1e-6, -2)
-        reward = closeness #np.clip(closeness, 0, 100)
-        reward -= 20 * abs(action).mean(1)
+        goal_closeness = np.power(distance_target_goal + 1e-6, -2)
+        goal_closeness = np.clip(goal_closeness, 0, 1000)
+
+        init_closeness = np.power(init_distance + 1e-6, -2)
         
-        #touch_sensors = envs.get_touch_sensors()
-        #sensors_activated = np.array(np.max(touch_sensors, axis=1), dtype=bool) # Array of length num_envs, containing True if one of the sensors > 0, False otherwise
-        #lift_reward = target_pos[:, 2] * sensors_activated
-        #config.tensorboard.add_scalar("Rewards/Lift_reward", lift_reward.mean(), frame)
+        reward += 10 * (goal_closeness - init_closeness)
         
-        #reward -= 30 * bad_contacts  # The penalty for touching something else is always active, not only on last frame
-        #reward += lift_reward * 100
+        reward -= abs(action).mean(1) # Avoids shaky movements
+
+        ## reward -= 30 * bad_contacts  # The penalty for touching something else is always active, not only on last frame
 
         config.tensorboard.add_scalar("Rewards/Good_contacts", good_contacts.mean(), frame)
-        config.tensorboard.add_scalar("Rewards/Bad_contacts", bad_contacts.mean(), frame)
+        #config.tensorboard.add_scalar("Rewards/Bad_contacts", bad_contacts.mean(), frame)
 
         if not frame % config.frames_per_action: # Only interested in the final step of the action for the contact with the target
             #reward += 100 * good_contacts  # Add an extra-reward for touching the target
@@ -305,7 +333,7 @@ def update_reward(envs, frame, reward, acc_reward, target_object="orange", punis
 
     #assert frame <= config.noop_steps or reward.mean() > 0
     reward = reward * 0.01
-    acc_reward = reward #TODO : rechange it to be a acc_reward += reward
+    acc_reward += reward
     if (frame > config.noop_steps and ((frame + 1 - config.noop_steps) % config.frames_per_action == 0)): # True at the last frame of an action
         envs.ret = envs.ret * envs.gamma + acc_reward
         acc_reward = envs._rewfilt(acc_reward)
