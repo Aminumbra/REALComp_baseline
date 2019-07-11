@@ -551,8 +551,8 @@ class PPOAgent:
             value = self.critic(state)
 
         # Take action probabilistically
-        if test:
-            dist.scale = torch.full_like(dist.scale, 0.2) # Use a very low std, to visualize what the "real" policy is
+        #if test:
+            #dist.scale = torch.full_like(dist.scale, 0.05) # Use a very low std, to visualize what the "real" policy is
 
         action = dist.sample()
 

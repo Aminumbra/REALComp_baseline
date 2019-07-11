@@ -1,5 +1,6 @@
 import inspect
 import os
+import time
 
 import gym
 import numpy as np
@@ -136,7 +137,7 @@ def demo_run():
     new_episode = True
 
     init_position = envs.get_obj_pos(target)
-    goal_position = np.full((config.num_envs, 3), [-0.10, 0.40, 0.46]) # default tomato position, and close to the table
+    goal_position = np.full((config.num_envs, 3), [-0.10, 0.40, 0.41]) # Left of the table, from the robot POV
 
     if config.model_to_load:
         controller.load_models(config.model_to_load)
@@ -253,6 +254,7 @@ def showoff(controller, target="orange", punished_objects=["mustard", "tomato"])
     reward = None
     done = False
     for frame in tqdm.tqdm(range(10000)):
+        time.sleep(0.03)
         action = controller.step(observation, reward, done, test=True)
         observation, reward, done, _ = envs.step(action.cpu())
 
@@ -297,10 +299,8 @@ def update_reward(envs, frame, reward, acc_reward, init_position, goal_position,
     if frame == 0:
         pass
 
-    good_contacts, bad_contacts = get_contacts(envs, target, punished_objects, robot_useful_parts=["finger_10", "finger_11"])#["skin_00", "skin_01", "skin_10", "skin_11"])
-    robot_useful_parts = ["finger_10", "finger_11"]  # 4 fingers + the last part of the robot (~ "its hand")
-
-    good_contacts, bad_contacts = get_contacts(envs, target, punished_objects, robot_useful_parts)
+    robot_useful_parts = ["base"]  # 4 fingers + the last part of the robot (~ "its hand")
+    good_contacts, bad_contacts = get_contacts(envs, target, punished_objects, robot_useful_parts=robot_useful_parts)#["skin_00", "skin_01", "skin_10", "skin_11"])
     
     target_pos = envs.get_obj_pos(target)
 
@@ -311,19 +311,21 @@ def update_reward(envs, frame, reward, acc_reward, init_position, goal_position,
         init_distance = euclidean_distance(init_position, goal_position)
         
         closeness = np.power(distance_robot_target + 1e-6, -2)
-        reward = np.clip(closeness, 0, 100)
+        closeness_reward = np.clip(closeness, 0, 100)
 
         goal_closeness = np.power(distance_target_goal + 1e-6, -2)
-        goal_closeness = np.clip(goal_closeness, 0, 1000)
-
+        goal_closeness = np.clip(goal_closeness, 0, 100)
+        
         init_closeness = np.power(init_distance + 1e-6, -2)
-        
-        reward += 10 * (goal_closeness - init_closeness)
-        
-        reward -= abs(action).mean(1) # Avoids shaky movements
 
-        ## reward -= 30 * bad_contacts  # The penalty for touching something else is always active, not only on last frame
+        goal_closeness_reward = 5 * (goal_closeness - init_closeness)
 
+        action_magnitude_penalty = 0 #abs(action).mean(1) # Avoids shaky movements
+        bad_contacts_penalty = 0 #30 * bad_contacts  # The penalty for touching something else is always active, not only on last frame
+        reward = good_contacts * 5 + goal_closeness_reward - action_magnitude_penalty - bad_contacts_penalty
+
+        config.tensorboard.add_scalar("Rewards/Reward_distance_hand_target", closeness_reward.mean(), frame)
+        config.tensorboard.add_scalar("Rewards/Reward_distance_target_goal", goal_closeness_reward.mean(), frame)
         config.tensorboard.add_scalar("Rewards/Good_contacts", good_contacts.mean(), frame)
         #config.tensorboard.add_scalar("Rewards/Bad_contacts", bad_contacts.mean(), frame)
 
