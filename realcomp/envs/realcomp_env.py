@@ -51,7 +51,7 @@ class REALCompEnv(MJCFBaseBulletEnv):
 
         self.reward_func = DefaultRewardFunc
 
-        self.robot.used_objects = ["table", "orange"] #["table", "tomato", "mustard", "orange"]
+        self.robot.used_objects = ["table", "tomato"] #["table", "tomato", "mustard", "orange"]
         self.set_eye("eye")
 
         self.goal = Goal(retina=self.observation_space.spaces[

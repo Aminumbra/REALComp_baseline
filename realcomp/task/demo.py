@@ -22,7 +22,7 @@ import torch
 
 objects_names = ["mustard", "tomato", "orange"]
 
-target = "orange"
+target = "tomato"
 punished_objects = []
 
 
@@ -136,9 +136,6 @@ def demo_run():
     touches = 0
     new_episode = True
 
-    init_position = envs.get_obj_pos(target)
-    goal_position = np.full((config.num_envs, 3), [-0.10, 0.40, 0.41]) # Left of the table, from the robot POV
-
     if config.model_to_load:
         controller.load_models(config.model_to_load)
     else:
@@ -166,9 +163,7 @@ def demo_run():
                                                             acc_reward,
                                                             target=target,
                                                             punished_objects=punished_objects,
-                                                            action=action.cpu().numpy(),
-                                                            init_position=init_position,
-                                                            goal_position=goal_position)
+                                                            action=action.cpu().numpy())
             
             time_since_last_touch += 1
 
@@ -294,12 +289,12 @@ def get_contacts(envs, target, punished_objects, robot_useful_parts=["finger_10"
     return good_contacts, bad_contacts
 
 
-def update_reward(envs, frame, reward, acc_reward, init_position, goal_position, target="orange", punished_objects=["mustard", "tomato"], action=0):
+def update_reward(envs, frame, reward, acc_reward, target="orange", punished_objects=["mustard", "tomato"], action=0):
 
     if frame == 0:
         pass
 
-    robot_useful_parts = ["base"]  # 4 fingers + the last part of the robot (~ "its hand")
+    robot_useful_parts = ["skin_00", "skin_01", "skin_10", "skin_11"]
     good_contacts, bad_contacts = get_contacts(envs, target, punished_objects, robot_useful_parts=robot_useful_parts)#["skin_00", "skin_01", "skin_10", "skin_11"])
     
     target_pos = envs.get_obj_pos(target)
@@ -307,25 +302,24 @@ def update_reward(envs, frame, reward, acc_reward, init_position, goal_position,
     if frame > config.noop_steps:
 
         distance_robot_target = np.minimum.reduce([euclidean_distance(target_pos, envs.get_part_pos(robot_part)) for robot_part in robot_useful_parts])
-        distance_target_goal  = euclidean_distance(target_pos, goal_position)
-        init_distance = euclidean_distance(init_position, goal_position)
         
         closeness = np.power(distance_robot_target + 1e-6, -2)
         closeness_reward = np.clip(closeness, 0, 100)
 
-        goal_closeness = np.power(distance_target_goal + 1e-6, -2)
-        goal_closeness = np.clip(goal_closeness, 0, 100)
+        sensors = envs.get_touch_sensors()
+        s_0, s_2 = sensors[:, 0], sensors[:, 2]
+        inner_sensors_reward = (s_0 * s_2) / (s_0 + s_2 + 1) * np.minimum(s_0, s_2) # Maximal value if they are both equal.
+        s_1, s_3 = sensors[:, 1], sensors[:, 3]
+        outer_sensors_reward = (s_1 * s_3) / (s_1 + s_3 + 1) * np.minimum(s_1, s_3) # Maximal value if they are both equal.
         
-        init_closeness = np.power(init_distance + 1e-6, -2)
-
-        goal_closeness_reward = 5 * (goal_closeness - init_closeness)
+        grasping_reward = 0.01 * good_contacts * (inner_sensors_reward + outer_sensors_reward)
 
         action_magnitude_penalty = 0 #abs(action).mean(1) # Avoids shaky movements
         bad_contacts_penalty = 0 #30 * bad_contacts  # The penalty for touching something else is always active, not only on last frame
-        reward = good_contacts * 5 + goal_closeness_reward - action_magnitude_penalty - bad_contacts_penalty
+        reward = closeness_reward + grasping_reward - action_magnitude_penalty - bad_contacts_penalty
 
         config.tensorboard.add_scalar("Rewards/Reward_distance_hand_target", closeness_reward.mean(), frame)
-        config.tensorboard.add_scalar("Rewards/Reward_distance_target_goal", goal_closeness_reward.mean(), frame)
+        config.tensorboard.add_scalar("Rewards/Reward_grasping", grasping_reward.mean(), frame)
         config.tensorboard.add_scalar("Rewards/Good_contacts", good_contacts.mean(), frame)
         #config.tensorboard.add_scalar("Rewards/Bad_contacts", bad_contacts.mean(), frame)
 

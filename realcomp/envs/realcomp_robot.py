@@ -23,10 +23,12 @@ class Kuka(URDFBasedRobot):
         "hammer": [0.00, 0.20, 0.55, 0.00, 0.00, 0.00],
         "tomato": [-0.10, 0.40, 0.49, 0.00, 0.00, 0.00]}
 
-    # "mustard": [-0.10, 0.00, 0.41, - np.pi/2, 0.00, 0.00] # centered version
     object_poses = {
         "table": [0.00, 0.00, 0.00, 0.00, 0.00, 0.00],
-        "orange": [-0.10, 0.00, 0.45, 0.00, 0.00, 0.00]}
+        # "mustard": [-0.10, 0.00, 0.41, - np.pi/2, 0.00, 0.00], # centered version
+        #"orange": [-0.10, 0.00, 0.45, 0.00, 0.00, 0.00],
+        "tomato": [-0.10, 0.00, 0.46, 0.00, 0.00, 0.00]
+    }
 
     num_joints = 9
     num_kuka_joints = 7

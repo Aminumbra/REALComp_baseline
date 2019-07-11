@@ -221,14 +221,14 @@ class RobotVecEnv(SubprocVecEnv):
     def obs_to_array(self, obs):
         converted_obs = []
 
-        orange_pos = self.get_obj_pos("orange")
+        #orange_pos = self.get_obj_pos("orange")
         #mustard_pos = self.get_obj_pos("mustard")
-        #tomato_pos = self.get_obj_pos("tomato")
+        tomato_pos = self.get_obj_pos("tomato")
         
         for i, o in enumerate(obs):
             converted_obs.append(np.concatenate([np.ravel(o[k]) for k in self.keys if k != "retina"]))
             # converted_obs[-1] = np.concatenate((converted_obs[-1], orange_pos[i], mustard_pos[i], tomato_pos[i]))
-            converted_obs[-1] = np.concatenate((converted_obs[-1], orange_pos[i]))
+            converted_obs[-1] = np.concatenate((converted_obs[-1], tomato_pos[i]))
 
             if "retina" in self.keys:
                 image = o["retina"]
