@@ -217,6 +217,7 @@ class RobotVecEnv(SubprocVecEnv):
 
         self.keys = keys
         self.observation_space = np.array(13 + 3*3)
+        self.goal_position = None
 
     def obs_to_array(self, obs):
         converted_obs = []
@@ -238,6 +239,9 @@ class RobotVecEnv(SubprocVecEnv):
                 image = np.ravel(image) / 255.  # Want a 1D-array, of floating-point numbers
 
                 converted_obs[-1] = np.concatenate((converted_obs[-1], image))
+
+            if self.goal_position:
+                converted_obs[-1] = np.concatenate((converted_obs[-1], self.goal_position[i]))
 
         return np.stack(converted_obs)
 

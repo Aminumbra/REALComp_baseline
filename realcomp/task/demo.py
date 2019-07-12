@@ -48,7 +48,7 @@ def make_env(env_id):
 env_id = "REALComp-v0"
 envs = [make_env(env_id) for e in range(config.num_envs)]
 envs = RobotVecEnv(envs, keys=["joint_positions", "touch_sensors"]) # Add 'retina' and/or 'touch_sensors' if needed
-envs = VecNormalize(envs, size_obs_to_norm = 13 + 3*1, ret=True)
+envs = VecNormalize(envs, size_obs_to_norm = 13 + 3*1 + 3*1, ret=True)
 
 loss_function = torch.nn.MSELoss()
 
@@ -137,7 +137,11 @@ def demo_run():
     new_episode = True
 
     init_position = envs.get_obj_pos(target)
-    goal_position = np.full((config.num_envs, 3), [-0.10, 0.40, 0.41]) # Left of the table, from the robot POV
+    goal_position_1 = np.full((config.num_envs // 2, 3),  [-0.10, 0.40, 0.41]) # Left of the table, from the robot POV
+    goal_position_2 = np.full((config.num_envs // 2, 3) , [-0.10, -0.40, 0.41]) # Right of the table, from the robot POV
+
+    goal_position = np.concatenate((goal_position_1, goal_position_2))
+    envs.goal_position = goal_position
 
     if config.model_to_load:
         controller.load_models(config.model_to_load)
@@ -168,7 +172,7 @@ def demo_run():
                                                             punished_objects=punished_objects,
                                                             action=action.cpu().numpy(),
                                                             init_position=init_position,
-                                                            goal_position=goal_position)
+                                                            goal_position=envs.goal_position)
             
             time_since_last_touch += 1
 
@@ -244,8 +248,12 @@ def showoff(controller, target="orange", punished_objects=["mustard", "tomato"])
 
     envs = [make_env(env_id)]
     envs = RobotVecEnv(envs, keys=["joint_positions", "touch_sensors"]) # Add 'retina' and/or 'touch_sensors' if needed
-    envs = VecNormalize(envs, size_obs_to_norm = 13 + 3*1, ret=True)
-
+    envs = VecNormalize(envs, size_obs_to_norm = 13 + 3*1 + 3*1, ret=True)
+    goal_position_1 = np.array([-0.10, 0.40, 0.41])
+    goal_position_2 = np.array([-0.10, -0.40, 0.41])
+    
+    envs.goal_position = goal_position_1
+    
     envs.render('human')
 
     controller.soft_reset()
@@ -253,6 +261,8 @@ def showoff(controller, target="orange", punished_objects=["mustard", "tomato"])
     observation = envs.reset(config.random_reset)
     reward = None
     done = False
+    num_episodes = 1
+    
     for frame in tqdm.tqdm(range(10000)):
         time.sleep(0.03)
         action = controller.step(observation, reward, done, test=True)
@@ -265,13 +275,19 @@ def showoff(controller, target="orange", punished_objects=["mustard", "tomato"])
 
         if (frame > config.noop_steps) and ((frame + 1 - config.noop_steps) % (config.frames_per_action * config.actions_per_episode) == 0):
             done = np.ones(config.num_envs)
-            observation = envs.reset(config.random_reset)
 
-        if (frame > config.noop_steps) and ((frame + 1 - config.noop_steps) % config.frames_per_action == 0): # True on the last frame of an action
-            good_contacts, bad_contacts = get_contacts(envs, target, punished_objects=[], robot_useful_parts=["base"])
-            if config.reset_on_touch and any(good_contacts):
-                done = np.ones(config.num_envs)
-                observation = envs.reset(config.random_reset)
+            if num_episodes % 5 == 0:
+                envs.goal_position = goal_position_1 if all(envs.goal_position == goal_position_2) else goal_position_2
+                
+            observation = envs.reset(config.random_reset)
+            num_episodes += 1
+
+        # if (frame > config.noop_steps) and ((frame + 1 - config.noop_steps) % config.frames_per_action == 0): # True on the last frame of an action
+        #     good_contacts, bad_contacts = get_contacts(envs, target, punished_objects=[], robot_useful_parts=["base"])
+        #     if config.reset_on_touch and any(good_contacts):
+        #         done = np.ones(config.num_envs)
+        #         observation = envs.reset(config.random_reset)
+        #         num_episodes += 1
 
             
 def get_contacts(envs, target, punished_objects, robot_useful_parts=["finger_10", "finger_11"]):
