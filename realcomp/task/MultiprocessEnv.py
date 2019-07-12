@@ -212,12 +212,14 @@ class SubprocVecEnv(VecEnv):
 from PIL import Image
 
 class RobotVecEnv(SubprocVecEnv):
-    def __init__(self, env_fns, keys=["joint_positions", "touch_sensors"]):
+    def __init__(self, env_fns, keys=["joint_positions", "touch_sensors"], goal_position=None):
         super(RobotVecEnv, self).__init__(env_fns)
 
         self.keys = keys
-        self.observation_space = np.array(13 + 3*3)
-        self.goal_position = None
+        self.goal_position = goal_position
+
+    def set_goal_position(self, goal_position):
+        self.goal_position = goal_position
 
     def obs_to_array(self, obs):
         converted_obs = []
@@ -240,7 +242,7 @@ class RobotVecEnv(SubprocVecEnv):
 
                 converted_obs[-1] = np.concatenate((converted_obs[-1], image))
 
-            if self.goal_position:
+            if self.goal_position is not None:
                 converted_obs[-1] = np.concatenate((converted_obs[-1], self.goal_position[i]))
 
         return np.stack(converted_obs)
@@ -278,7 +280,7 @@ class RobotVecEnv(SubprocVecEnv):
         return self.obs_to_array([remote.recv() for remote in self.remotes])
 
 
-class VecNormalize(RobotVecEnv):
+class VecNormalize():
     """
     A vectorized wrapper that normalizes the observations
     and returns from an environment.
@@ -288,8 +290,6 @@ class VecNormalize(RobotVecEnv):
         self.envs = envs
         self.size_obs_to_norm = size_obs_to_norm
 
-        self.i = 0
-        
         if use_tf:
             from baselines.common.running_mean_std import TfRunningMeanStd
             self.ob_rms = TfRunningMeanStd(shape=self.observation_space.shape, scope='ob_rms') if ob else None
@@ -297,7 +297,7 @@ class VecNormalize(RobotVecEnv):
 
         else:
             from baselines.common.running_mean_std import RunningMeanStd
-            self.ob_rms = RunningMeanStd(shape=self.observation_space.shape) if ob else None
+            self.ob_rms = RunningMeanStd(shape=(size_obs_to_norm,)) if ob else None
             self.ret_rms = RunningMeanStd(shape=()) if ret else None
         self.clipob = clipob
         self.cliprew = cliprew
@@ -337,14 +337,17 @@ class VecNormalize(RobotVecEnv):
         obs = self.envs.reset(data)
         return self._obfilt(obs)
 
+    def __len__(self):
+        return len(self.envs)
+
     def __getattr__(self, attr):
         orig_attr = self.envs.__getattribute__(attr)
         if callable(orig_attr):
             def hooked(*args, **kwargs):
                 result = orig_attr(*args, **kwargs)
-                # prevent wrapped_class from becoming unwrapped
+                #prevent wrapped_class from becoming unwrapped
                 # if result == self.wrapped_class:
-                   # return self
+                #    return self
                 return result
             return hooked
         else:

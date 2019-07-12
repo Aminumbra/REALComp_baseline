@@ -101,7 +101,7 @@ class REALCompEnv(MJCFBaseBulletEnv):
             for obj in ["tomato", "orange", "mustard"]:
                 rand_x = np.random.uniform(low=-0.15, high=0.05)
                 rand_y = np.random.uniform(low=-0.40, high=0.40)
-                self.robot.object_poses[obj] = [rand_x, rand_y, 0.55, 0.00, 0.00, 0.00]
+                self.robot.object_poses[obj] = [rand_x, rand_y, 0.45, 0.00, 0.00, 0.00]
 
         super(REALCompEnv, self).reset()
         self._p.setGravity(0., 0., -9.81)
