@@ -216,7 +216,6 @@ class RobotVecEnv(SubprocVecEnv):
         super(RobotVecEnv, self).__init__(env_fns)
 
         self.keys = keys
-        self.observation_space = np.array(13 + 3*3)
 
     def obs_to_array(self, obs):
         converted_obs = []
@@ -274,7 +273,7 @@ class RobotVecEnv(SubprocVecEnv):
         return self.obs_to_array([remote.recv() for remote in self.remotes])
 
 
-class VecNormalize(RobotVecEnv):
+class VecNormalize():
     """
     A vectorized wrapper that normalizes the observations
     and returns from an environment.
@@ -284,8 +283,6 @@ class VecNormalize(RobotVecEnv):
         self.envs = envs
         self.size_obs_to_norm = size_obs_to_norm
 
-        self.i = 0
-        
         if use_tf:
             from baselines.common.running_mean_std import TfRunningMeanStd
             self.ob_rms = TfRunningMeanStd(shape=self.observation_space.shape, scope='ob_rms') if ob else None
@@ -293,7 +290,7 @@ class VecNormalize(RobotVecEnv):
 
         else:
             from baselines.common.running_mean_std import RunningMeanStd
-            self.ob_rms = RunningMeanStd(shape=self.observation_space.shape) if ob else None
+            self.ob_rms = RunningMeanStd(shape=(size_obs_to_norm,)) if ob else None
             self.ret_rms = RunningMeanStd(shape=()) if ret else None
         self.clipob = clipob
         self.cliprew = cliprew
@@ -332,6 +329,9 @@ class VecNormalize(RobotVecEnv):
         self.ret = np.zeros(self.num_envs)
         obs = self.envs.reset(data)
         return self._obfilt(obs)
+
+    def __len__(self):
+        return len(self.envs)
 
     def __getattr__(self, attr):
         orig_attr = self.envs.__getattribute__(attr)
