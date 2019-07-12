@@ -308,11 +308,11 @@ def update_reward(envs, frame, reward, acc_reward, target="orange", punished_obj
 
         sensors = envs.get_touch_sensors()
         s_0, s_2 = sensors[:, 0], sensors[:, 2]
-        inner_sensors_reward = (s_0 * s_2) / (s_0 + s_2 + 1) * np.minimum(s_0, s_2) # Maximal value if they are both equal.
+        inner_sensors_reward = (s_0 * s_2) / (s_0 ** 2 + s_2 ** 2 + 1) * (s_0 + s_2) # Maximal value if they are both equal.
         s_1, s_3 = sensors[:, 1], sensors[:, 3]
-        outer_sensors_reward = (s_1 * s_3) / (s_1 + s_3 + 1) * np.minimum(s_1, s_3) # Maximal value if they are both equal.
+        outer_sensors_reward = (s_1 * s_3) / (s_1 ** 2 + s_3 ** 2 + 1) * (s_1 + s_3) # Maximal value if they are both equal.
         
-        grasping_reward = 0.01 * good_contacts * (inner_sensors_reward + outer_sensors_reward)
+        grasping_reward = np.clip(good_contacts * (inner_sensors_reward + outer_sensors_reward), 0, 10000)
 
         action_magnitude_penalty = 0 #abs(action).mean(1) # Avoids shaky movements
         bad_contacts_penalty = 0 #30 * bad_contacts  # The penalty for touching something else is always active, not only on last frame
