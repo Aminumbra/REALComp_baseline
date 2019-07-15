@@ -147,6 +147,7 @@ class REALCompEnv(MJCFBaseBulletEnv):
         '''
         reset positions if an object goes out of the limits
         '''
+        return
         for obj in self.robot.used_objects:
             x, y, z = self.robot.object_bodies[obj].get_position()
             #if not (-0.2 < x < 0.2) or not (-0.5 < y < 0.5) or z < 0.33: # Rather conservative bounds

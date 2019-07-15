@@ -76,7 +76,7 @@ def demo_run():
                           init_wait=config.noop_steps,
                           clip=0.2,
                           entropy_coeff=0.01,
-                          log_std=0.,
+                          log_std=-0.5, # TODO : see if this is an actual impact. Default : 0.0
                           use_parallel=True,
                           num_parallel=config.num_envs,
                           logs=True,
@@ -137,11 +137,10 @@ def demo_run():
     new_episode = True
 
     init_position = envs.get_obj_pos(target)
-    goal_position_1 = np.full((config.num_envs, 3),  [-0.10, 0.40, 0.41]) # Left of the table, from the robot POV
-    #goal_position_2 = np.full((config.num_envs // 2, 3) , [-0.10, -0.40, 0.41]) # Right of the table, from the robot POV
-    goal_position = goal_position_1 #np.concatenate((goal_position_1, goal_position_2))
+    goal_position_0 = np.full((config.num_envs // 2, 3),  [-0.10, 0.40, 0.41]) # Left of the table, from the robot POV
+    goal_position_1 = np.full((config.num_envs // 2, 3) , [-0.10, -0.40, 0.41]) # Right of the table, from the robot POV
+    goal_position = np.concatenate((goal_position_0, goal_position_1))
     envs.set_goal_position(goal_position)
-    #envs.goal_position = goal_position
 
     if config.model_to_load:
         controller.load_models(config.model_to_load)
@@ -252,10 +251,12 @@ def showoff(controller, target="orange", punished_objects=["mustard", "tomato"])
     envs = [make_env(env_id)]
     envs = RobotVecEnv(envs, keys=["joint_positions", "touch_sensors"]) # Add 'retina' and/or 'touch_sensors' if needed
     envs = VecNormalize(envs, size_obs_to_norm = 13, ret=True)
-    goal_position_1 = np.array([[-0.10, 0.40, 0.41]])
-    goal_position_2 = np.array([[-0.10, -0.40, 0.41]])
+    goal_position_0 = np.array([[-0.10, 0.40, 0.41]])
+    goal_position_1 = np.array([[-0.10, -0.40, 0.41]])
+    goal_positions = np.array([goal_position_0, goal_position_1])
+    current_goal = 0
     
-    envs.set_goal_position(goal_position_1)
+    envs.set_goal_position(goal_positions[1])
     
     envs.render('human')
 
@@ -267,7 +268,7 @@ def showoff(controller, target="orange", punished_objects=["mustard", "tomato"])
     num_episodes = 1
     
     for frame in tqdm.tqdm(range(10000)):
-        time.sleep(0.03)
+        time.sleep(0.02)
         action = controller.step(observation, reward, done, test=True)
         observation, reward, done, _ = envs.step(action.cpu())
 
@@ -279,9 +280,10 @@ def showoff(controller, target="orange", punished_objects=["mustard", "tomato"])
         if (frame > config.noop_steps) and ((frame + 1 - config.noop_steps) % (config.frames_per_action * config.actions_per_episode) == 0):
             done = np.ones(config.num_envs)
 
-            # if num_episodes % 5 == 0:
-            #     new_goal_position = goal_position_1 if all(envs.goal_position == goal_position_2) else goal_position_2
-            #     envs.set_goal_position(new_goal_position)
+            if num_episodes % 5 == 0:
+                current_goal = 1 - current_goal
+                envs.set_goal_position(goal_positions[current_goal])
+                print("Goal changed : now trying to achieve goal ", current_goal)
                 
             observation = envs.reset(config.random_reset)
             num_episodes += 1
