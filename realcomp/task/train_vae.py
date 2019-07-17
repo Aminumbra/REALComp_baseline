@@ -131,12 +131,14 @@ def train(data_loader,
     vae.train()
     len_dataset = len(data_loader.dataset)
     
-    for i in tqdm.tqdm(range(epochs)):
+    for i in range(epochs):
+
+        print("Epoch {}/{}".format(i, epochs))
         
         train_bce = 0
         train_kld = 0
         
-        for batch_idx, (images, _) in enumerate(data_loader):
+        for batch_idx, (images, _) in tqdm.tqdm(enumerate(data_loader)):
             recon_images, mu, logvar = vae(images)
 
             loss, bce, kld = loss_fn(recon_images, images, mu, logvar)
@@ -152,7 +154,8 @@ def train(data_loader,
         tensorboard.add_scalar("VAE/BCE_Loss", train_bce / len_dataset, i)
         tensorboard.add_scalar("VAE/KLD_Loss", train_kld / len_dataset, i)
 
-def test(crop=True):
+def test(crop=True,
+         samples=10):
 
     vae.eval()
     
@@ -164,18 +167,18 @@ def test(crop=True):
     env = gym.make('REALComp-v0')
     obs = env.reset(mode="random")
 
-    for i in tqdm.tqdm(range(10 * 10)):
+    for i in tqdm.tqdm(range(10 * samples)):
 
         if i > 0 and i % 10 == 0:
-            x = np.random.uniform(-0.05, 0.6)
-            y = np.random.uniform(-0.2, 0.2)
-            env.eye_pos = [x, y, 1.2]
-            env.set_eye("eye")
+            # x = np.random.uniform(-0.05, 0.6)
+            # y = np.random.uniform(-0.2, 0.2)
+            # env.eye_pos = [x, y, 1.2]
+            # env.set_eye("eye")
             obs = env.reset(mode="random")
 
         if i % 20 == 0:
             action = (np.random.random(9) - 0.5) * np.pi
-            action = np.zeros(9)
+            #action = np.zeros(9)
                                 
         obs, _, _, _ = env.step(action)
 
@@ -233,15 +236,13 @@ def test(crop=True):
 if __name__=="__main__":
 
     try:
-        collect_pictures(n=10000)
-        # train_loader = load_data()
-        # train(data_loader=train_loader)
+        #collect_pictures(n=10000)
+        train_loader = load_data()
+        train(data_loader=train_loader, epochs=10)
         tensorboard.close()
-        # test()
+        torch.save(vae.state_dict(), "vae_trained.pth")
+        test()
 
     except KeyboardInterrupt:
-
-        sys.exit(0)
-        
         tensorboard.close()
         test()
