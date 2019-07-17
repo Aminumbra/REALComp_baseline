@@ -57,10 +57,10 @@ num_envs = 4
 observations_to_stack = 3
 pre_train_cnn = False
 reset_on_touch = False
-random_reset = None#"random"
+random_reset = "random"
 actions_per_episode = 20
 image_shape = (144, 72)
-lr = 3e-4
+lr = 1e-4
 ludicrous_speed = True
 
 if DEBUG:

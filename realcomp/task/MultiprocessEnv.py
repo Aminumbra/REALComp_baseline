@@ -216,7 +216,10 @@ class RobotVecEnv(SubprocVecEnv):
         super(RobotVecEnv, self).__init__(env_fns)
 
         self.keys = keys
-        self.goal_position = goal_position
+        if goal_position is not None:
+            self.goal_position = goal_position
+        else:
+            self.goal_position = np.zeros((len(self), 3))
 
     def set_goal_position(self, goal_position):
         self.goal_position = goal_position
@@ -224,14 +227,16 @@ class RobotVecEnv(SubprocVecEnv):
     def obs_to_array(self, obs):
         converted_obs = []
 
-        orange_pos = self.get_obj_pos("orange")
+        #orange_pos = self.get_obj_pos("orange")
         #mustard_pos = self.get_obj_pos("mustard")
         #tomato_pos = self.get_obj_pos("tomato")
+
+        target_pos = self.get_obj_pos("cube")
         
         for i, o in enumerate(obs):
             converted_obs.append(np.concatenate([np.ravel(o[k]) for k in self.keys if k != "retina"]))
             # converted_obs[-1] = np.concatenate((converted_obs[-1], orange_pos[i], mustard_pos[i], tomato_pos[i]))
-            converted_obs[-1] = np.concatenate((converted_obs[-1], orange_pos[i]))
+            converted_obs[-1] = np.concatenate((converted_obs[-1], target_pos[i]))
 
             if "retina" in self.keys:
                 image = o["retina"]
@@ -286,7 +291,7 @@ class VecNormalize():
     and returns from an environment.
     """
 
-    def __init__(self, envs, size_obs_to_norm=13, ob=True, ret=True, clipob=10., cliprew=10., gamma=0.95, epsilon=1e-8, use_tf=False):
+    def __init__(self, envs, size_obs_to_norm=13, ob=True, ret=True, clipob=1., cliprew=1., gamma=0.95, epsilon=1e-8, use_tf=False):
         self.envs = envs
         self.size_obs_to_norm = size_obs_to_norm
 

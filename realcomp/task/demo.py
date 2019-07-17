@@ -20,9 +20,9 @@ from train_cnn import train_cnn, test_cnn
 import torch.optim as optim
 import torch
 
-objects_names = ["mustard", "tomato", "orange"]
+objects_names = ["mustard", "tomato", "orange", "cube"]
 
-target = "orange"
+target = "cube"
 punished_objects = []
 
 
@@ -48,7 +48,7 @@ def make_env(env_id):
 env_id = "REALComp-v0"
 envs = [make_env(env_id) for e in range(config.num_envs)]
 envs = RobotVecEnv(envs, keys=["joint_positions", "touch_sensors"]) # Add 'retina' and/or 'touch_sensors' if needed
-envs = VecNormalize(envs, size_obs_to_norm = 13, ret=True)
+envs = VecNormalize(envs, size_obs_to_norm = 13 + 3*1 + 3*1, ret=True)
 
 loss_function = torch.nn.MSELoss()
 
@@ -137,10 +137,11 @@ def demo_run():
     new_episode = True
 
     init_position = envs.get_obj_pos(target)
-    goal_position_0 = np.full((config.num_envs // 2, 3),  [-0.10, 0.40, 0.41]) # Left of the table, from the robot POV
-    goal_position_1 = np.full((config.num_envs // 2, 3) , [-0.10, -0.40, 0.41]) # Right of the table, from the robot POV
-    goal_position = np.concatenate((goal_position_0, goal_position_1))
-    envs.set_goal_position(goal_position)
+    goal_position_0 = np.array([-0.15, 0.40, 0.41]) # Left of the table, from the robot POV
+    goal_position_1 = np.array([-0.15, -0.40, 0.41]) # Right of the table, from the robot POV
+    goals_positions = np.array([goal_position_0, goal_position_0])
+    selected_goals = np.random.choice(2, config.num_envs)
+    envs.set_goal_position(goals_positions[selected_goals])
 
     if config.model_to_load:
         controller.load_models(config.model_to_load)
@@ -201,12 +202,16 @@ def demo_run():
                 
                 if config.reset_on_touch and any(had_contact):
                     done = np.ones(config.num_envs)
+                    selected_goals = np.random.choice(2, config.num_envs)
+                    envs.set_goal_position(goals_positions[selected_goals])
                     observation = envs.reset(config.random_reset)
                     init_position = envs.get_obj_pos(target)
                     new_episode = True
 
             if (frame > config.noop_steps) and ((frame + 1 - config.noop_steps) % (config.frames_per_action * config.actions_per_episode) == 0):
                 done = np.ones(config.num_envs)
+                selected_goals = np.random.choice(2, config.num_envs)
+                envs.set_goal_position(goals_positions[selected_goals])
                 observation = envs.reset(config.random_reset)
                 init_position = envs.get_obj_pos(target)
                 new_episode = True
@@ -250,7 +255,7 @@ def showoff(controller, target="orange", punished_objects=["mustard", "tomato"])
 
     envs = [make_env(env_id)]
     envs = RobotVecEnv(envs, keys=["joint_positions", "touch_sensors"]) # Add 'retina' and/or 'touch_sensors' if needed
-    envs = VecNormalize(envs, size_obs_to_norm = 13, ret=True)
+    envs = VecNormalize(envs, size_obs_to_norm = 13 + 3*1 + 3*1, ret=True)
     goal_position_0 = np.array([[-0.10, 0.40, 0.41]])
     goal_position_1 = np.array([[-0.10, -0.40, 0.41]])
     goal_positions = np.array([goal_position_0, goal_position_1])
@@ -345,7 +350,7 @@ def update_reward(envs, frame, reward, acc_reward, init_position, goal_position,
 
         action_magnitude_penalty = 0 #abs(action).mean(1) # Avoids shaky movements
         bad_contacts_penalty = 0 #30 * bad_contacts  # The penalty for touching something else is always active, not only on last frame
-        reward = closeness_reward + good_contacts * 5 + goal_closeness_reward - action_magnitude_penalty - bad_contacts_penalty
+        reward = closeness_reward + 5 * good_contacts + goal_closeness_reward - action_magnitude_penalty - bad_contacts_penalty
 
         config.tensorboard.add_scalar("Rewards/Reward_distance_hand_target", closeness_reward.mean(), frame)
         config.tensorboard.add_scalar("Rewards/Reward_distance_target_goal", goal_closeness_reward.mean(), frame)

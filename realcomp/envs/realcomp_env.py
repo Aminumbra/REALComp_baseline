@@ -51,7 +51,7 @@ class REALCompEnv(MJCFBaseBulletEnv):
 
         self.reward_func = DefaultRewardFunc
 
-        self.robot.used_objects = ["table", "orange"] #["table", "tomato", "mustard", "orange"]
+        self.robot.used_objects = ["table", "cube"] #["table", "tomato", "mustard", "orange"]
         self.set_eye("eye")
 
         self.goal = Goal(retina=self.observation_space.spaces[
@@ -98,10 +98,10 @@ class REALCompEnv(MJCFBaseBulletEnv):
     def reset(self, mode=None):
 
         if mode == "random":
-            for obj in ["tomato", "orange", "mustard"]:
+            for obj in ["tomato", "orange", "mustard", "cube"]:
                 rand_x = np.random.uniform(low=-0.15, high=0.05)
                 rand_y = np.random.uniform(low=-0.40, high=0.40)
-                self.robot.object_poses[obj] = [rand_x, rand_y, 0.45, 0.00, 0.00, 0.00]
+                self.robot.object_poses[obj] = [rand_x, rand_y, 0.41, 0.00, 0.00, 0.00]
 
         super(REALCompEnv, self).reset()
         self._p.setGravity(0., 0., -9.81)
@@ -147,7 +147,6 @@ class REALCompEnv(MJCFBaseBulletEnv):
         '''
         reset positions if an object goes out of the limits
         '''
-        return
         for obj in self.robot.used_objects:
             x, y, z = self.robot.object_bodies[obj].get_position()
             #if not (-0.2 < x < 0.2) or not (-0.5 < y < 0.5) or z < 0.33: # Rather conservative bounds

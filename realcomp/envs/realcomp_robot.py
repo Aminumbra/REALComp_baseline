@@ -14,7 +14,8 @@ class Kuka(URDFBasedRobot):
         "orange",
         "mustard",
         "hammer",
-        "tomato"]
+        "tomato",
+        "cube"]
 
     object_poses = {
         "table": [0.00, 0.00, 0.00, 0.00, 0.00, 0.00],
@@ -26,7 +27,7 @@ class Kuka(URDFBasedRobot):
     # "mustard": [-0.10, 0.00, 0.41, - np.pi/2, 0.00, 0.00] # centered version
     object_poses = {
         "table": [0.00, 0.00, 0.00, 0.00, 0.00, 0.00],
-        "orange": [-0.10, 0.00, 0.45, 0.00, 0.00, 0.00]}
+        "cube": [-0.10, 0.00, 0.41, 0.00, 0.00, 0.00]}
 
     num_joints = 9
     num_kuka_joints = 7
