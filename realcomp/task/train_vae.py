@@ -125,8 +125,7 @@ def load_data(path="pictures/",
     
 
 def train(data_loader,
-          epochs = 100,
-          nb_updates = 600):
+          epochs = 100):
 
     vae.train()
     len_dataset = len(data_loader.dataset)
@@ -238,7 +237,7 @@ if __name__=="__main__":
     try:
         #collect_pictures(n=10000)
         train_loader = load_data()
-        train(data_loader=train_loader, epochs=10)
+        train(data_loader=train_loader, epochs=100)
         tensorboard.close()
         torch.save(vae.state_dict(), "vae_trained.pth")
         test()
