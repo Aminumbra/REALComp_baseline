@@ -44,7 +44,7 @@ def subsample(image, x=24, y=32):
     image = np.array(image) / 255.
     return image
 
-def contours(image, value=0.3):
+def contours(image):
     labeled_image, nb_zones = ndi.measurements.label(image)
     if nb_zones >= 1:
         centers = ndi.measurements.center_of_mass(image, labeled_image, range(1, nb_zones + 1))
@@ -69,7 +69,7 @@ def contours(image, value=0.3):
     return labeled_image, centers, radius, size
 
 
-def compute_reward(image_1, image_2, threshold_mask=0.1):
+def compute_diff(image_1, image_2, threshold_mask=0.1):
     diff, smoothed_diff = kernelize(image_1, image_2)
     smoothed_diff = mask_noise(smoothed_diff, threshold_mask)
     labeled_image, centers, radius, size = contours(smoothed_diff)
@@ -84,3 +84,11 @@ def compute_reward(image_1, image_2, threshold_mask=0.1):
         dist_penalty = dist_clusters / (radius[0] + radius[1])
 
         return -(tot_size * dist_penalty)
+    
+
+def compute_reward(image_before, image_after, image_goal, threshold_mask=0.1):
+
+    score_before = compute_diff(image_before, image_goal, threshold_mask)
+    score_after = compute_diff(image_after, image_goal, threshold_mask)
+
+    return score_after - score_before
