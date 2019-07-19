@@ -510,11 +510,9 @@ class PPOAgent:
                 self.rewards.append(torch.FloatTensor([reward]).unsqueeze(1).to(self.device))
                 self.not_done.append(torch.FloatTensor([1 - done]).unsqueeze(1).to(self.device))  # Reward and Value do not have the right shape there
 
-        self.frame += 1
-
         if self.frame == self.horizon and not test: # Don't want to learn while testing
             self.update()
-
+        
         # TODO : Might need to change a few things if we use a CNN on only part of the stacked frames !!
         state_t = observation
 
@@ -581,6 +579,8 @@ class PPOAgent:
 
         # Reset the repeat-action counter
         self.num_repeated_action = 1
+        
+        self.frame += 1
 
         action_detached = self.action_to_repeat.detach()
         return action_detached
@@ -627,7 +627,7 @@ class PPOAgent:
         # to be a 'good' estimation of the advantage
         advantages = returns - self.values
 
-        # Update !
+        # Update !           
         self.ppo_full_step(returns, advantages)
 
         if self.logs:

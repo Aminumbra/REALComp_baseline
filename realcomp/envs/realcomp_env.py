@@ -150,7 +150,7 @@ class REALCompEnv(MJCFBaseBulletEnv):
         for obj in self.robot.used_objects:
             x, y, z = self.robot.object_bodies[obj].get_position()
             #if not (-0.2 < x < 0.2) or not (-0.5 < y < 0.5) or z < 0.33: # Rather conservative bounds
-            if obj != "table" and (not (-0.3 < x < 0.3) or not (-0.7 < y < 0.7 ) or (z < 0.3)): # As long as the objects fall from the table, z<0.3 will eventually be verified
+            if obj != "table" and (z < 0.2): # As long as the objects fall from the table, z<0.3 will eventually be verified
                 #self.robot.object_bodies[obj].reset_position(self.robot.object_poses[obj][:3])
                 self.robot.object_bodies[obj].reset_pose(self.robot.object_poses[obj][:3], [0., 0., 0., 1.]) # Add orientation
                 

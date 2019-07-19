@@ -1,7 +1,6 @@
 import numpy as np
-from PIL import Image, ImageFilter
+from PIL import Image
 from matplotlib import pyplot as plt
-import cv2
 import scipy.ndimage as ndi
 
 
@@ -27,12 +26,12 @@ def gray_image_from_obs(observation):
     image = np.array(image)[:, :, 0] / 255.
     return image
 
-def kernelize(image_1, image_2, size=7.0):
+def smooth_difference(image_1, image_2, size=7.0):
 
     diff_image = abs(image_1 - image_2)
     smoothed_diff = ndi.filters.gaussian_filter(diff_image, size)
             
-    return diff_image, smoothed_diff
+    return smoothed_diff
 
 def mask_noise(image, threshold=0.01):
     image[image < threshold] = 0
@@ -70,7 +69,7 @@ def contours(image):
 
 
 def compute_diff(image_1, image_2, threshold_mask=0.1):
-    diff, smoothed_diff = kernelize(image_1, image_2)
+    smoothed_diff = smooth_difference(image_1, image_2)
     smoothed_diff = mask_noise(smoothed_diff, threshold_mask)
     labeled_image, centers, radius, size = contours(smoothed_diff)
 
@@ -92,3 +91,8 @@ def compute_reward(image_before, image_after, image_goal, threshold_mask=0.1):
     score_after = compute_diff(image_after, image_goal, threshold_mask)
 
     return score_after - score_before
+
+def compute_reward_parallel(images_before, images_after, images_goal):
+
+    num_parallel = len(images_before)
+    return np.stack([compute_reward(images_before[i], images_after[i], images_goal[i]) for i in range(num_parallel)])

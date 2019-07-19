@@ -139,6 +139,7 @@ def demo_run():
     init_position = envs.get_obj_pos(target)
     goal_position_0 = np.array([-0.15, 0.40, 0.41]) # Left of the table, from the robot POV
     goal_position_1 = np.array([-0.15, -0.40, 0.41]) # Right of the table, from the robot POV
+    goal_position_2 = np.array([-0.05, 0.0, 0.41]) # Center of the table
     goals_positions = np.array([goal_position_0, goal_position_0])
     selected_goals = np.random.choice(2, config.num_envs)
     envs.set_goal_position(goals_positions[selected_goals])
@@ -161,7 +162,7 @@ def demo_run():
                 # Add things : change current goal, etc
                 pass
 
-            action = controller.step(observation, acc_reward, done, test=False)
+            action = controller.step(observation, reward, done, test=False)
 
             observation, reward, done, _ = envs.step(action.cpu())
             
@@ -350,25 +351,28 @@ def update_reward(envs, frame, reward, acc_reward, init_position, goal_position,
 
         action_magnitude_penalty = 0 #abs(action).mean(1) # Avoids shaky movements
         bad_contacts_penalty = 0 #30 * bad_contacts  # The penalty for touching something else is always active, not only on last frame
-        reward = closeness_reward + 5 * good_contacts + goal_closeness_reward - action_magnitude_penalty - bad_contacts_penalty
+        #reward = closeness_reward + 5 * good_contacts + goal_closeness_reward - action_magnitude_penalty - bad_contacts_penalty
+        reward = goal_closeness_reward
 
         config.tensorboard.add_scalar("Rewards/Reward_distance_hand_target", closeness_reward.mean(), frame)
         config.tensorboard.add_scalar("Rewards/Reward_distance_target_goal", goal_closeness_reward.mean(), frame)
         config.tensorboard.add_scalar("Rewards/Good_contacts", good_contacts.mean(), frame)
         #config.tensorboard.add_scalar("Rewards/Bad_contacts", bad_contacts.mean(), frame)
 
-        if not frame % config.frames_per_action: # Only interested in the final step of the action for the contact with the target
-            #reward += 100 * good_contacts  # Add an extra-reward for touching the target
-            acc_reward.fill(0)
+        #if not frame % config.frames_per_action:
+            #acc_reward.fill(0)
 
-    #assert frame <= config.noop_steps or reward.mean() > 0
     reward = reward * 0.01
     acc_reward += reward
-    if (frame > config.noop_steps and ((frame + 1 - config.noop_steps) % config.frames_per_action == 0)): # True at the last frame of an action
+    
+    if (frame > config.noop_steps and ((frame + 1 - config.noop_steps) % (config.frames_per_action * config.actions_per_episode) == 0)): # True at the last frame of an EPISODE
         envs.ret = envs.ret * envs.gamma + acc_reward
         acc_reward = envs._rewfilt(acc_reward)
-    
-    return reward, good_contacts, acc_reward
+
+        return acc_reward, good_contacts, np.zeros_like(acc_reward)
+
+    else:
+        return np.zeros_like(acc_reward), good_contacts, acc_reward
 
 
 if __name__ == "__main__":
