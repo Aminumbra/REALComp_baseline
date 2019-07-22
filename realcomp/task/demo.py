@@ -351,8 +351,8 @@ def update_reward(envs, frame, reward, acc_reward, init_position, goal_position,
 
         action_magnitude_penalty = 0 #abs(action).mean(1) # Avoids shaky movements
         bad_contacts_penalty = 0 #30 * bad_contacts  # The penalty for touching something else is always active, not only on last frame
-        #reward = closeness_reward + 5 * good_contacts + goal_closeness_reward - action_magnitude_penalty - bad_contacts_penalty
-        reward = goal_closeness_reward
+        reward = closeness_reward + 5 * good_contacts + goal_closeness_reward - action_magnitude_penalty - bad_contacts_penalty
+        #reward = goal_closeness_reward
 
         config.tensorboard.add_scalar("Rewards/Reward_distance_hand_target", closeness_reward.mean(), frame)
         config.tensorboard.add_scalar("Rewards/Reward_distance_target_goal", goal_closeness_reward.mean(), frame)
