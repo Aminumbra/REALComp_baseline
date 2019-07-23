@@ -360,17 +360,12 @@ class PPOAgent:
         torch.save({
             "model_actor": self.actor.state_dict(),
             "model_critic": self.critic.state_dict(),
-            "optim_actor": self.actor.optimizer.state_dict(),
-            "optim_critic": self.critic.optimizer.state_dict()
         }, path)
 
     def load_models(self, path):
         checkpoint = torch.load(path)
         self.actor.load_state_dict(checkpoint["model_actor"])
         self.critic.load_state_dict(checkpoint["model_critic"])
-        self.actor.optimizer.load_state_dict(checkpoint["optim_actor"])
-        self.critic.optimizer.load_state_dict(checkpoint["optim_critic"])
-
         # self.actor.eval()
         # self.critic.eval()
 

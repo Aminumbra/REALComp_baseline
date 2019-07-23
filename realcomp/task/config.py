@@ -18,13 +18,13 @@ print("DEBUG: ", DEBUG)
 experiment_name = "DEBUG:" + time.strftime("%Y_%m_%d-%H_%M_%S")
 
 response = None
-if not DEBUG and HASGUI:
-    try:
-        root = tkinter.Tk()
-        response = tkinter.simpledialog.askstring("comment", "comment")
-        root.destroy()
-    except tkinter.TclError as _:
-        pass
+# if not DEBUG and HASGUI:
+#     try:
+#         root = tkinter.Tk()
+#         response = tkinter.simpledialog.askstring("comment", "comment")
+#         root.destroy()
+#     except tkinter.TclError as _:
+#         pass
 
 if len(sys.argv) > 1:
     response = f'{sys.argv[1]}:{time.strftime("%Y_%m_%d-%H_%M_%S")}{os.getpid()}'
