@@ -75,3 +75,54 @@ class VAE(nn.Module):
         z, mu, logvar = self.encode(x)
         z = self.decode(z)
         return z, mu, logvar
+
+
+
+#### Simple autoencoder :
+
+class AutoEncoder(nn.Module):
+    def __init__(self, image_channels=3, h_dim=4608, z_dim=32):
+        super(AutoEncoder, self).__init__()
+        self.encoder = nn.Sequential(
+            nn.Conv2d(image_channels, 16, kernel_size=4, stride=2),
+            nn.ReLU(),
+            nn.Conv2d(16, 32, kernel_size=4, stride=2),
+            nn.ReLU(),
+            nn.Conv2d(32, 64, kernel_size=4, stride=2),
+            nn.ReLU(),
+            nn.Conv2d(64, 128, kernel_size=4, stride=2),
+            nn.ReLU(),
+            Flatten()
+        )
+        
+        self.fc1 = nn.Linear(h_dim, z_dim)
+        self.fc2 = nn.Linear(z_dim, h_dim)
+        
+        self.decoder = nn.Sequential(
+            UnFlatten(),
+            nn.ConvTranspose2d(h_dim, 64, kernel_size=5, stride=2),
+            nn.ReLU(),
+            nn.ConvTranspose2d(64, 32, kernel_size=5, stride=2),
+            nn.ReLU(),
+            nn.ConvTranspose2d(32, 16, kernel_size=5, stride=2),
+            nn.ReLU(),
+            nn.ConvTranspose2d(16, 16, kernel_size=5, stride=2),
+            nn.ReLU(),
+            nn.ConvTranspose2d(16, image_channels, kernel_size=6, stride=2),
+            nn.Sigmoid(),
+        )
+
+    def encode(self, x):
+        h = self.encoder(x)
+        z = self.fc1(h)
+        return z
+
+    def decode(self, z):
+        z = self.fc2(z)
+        z = self.decoder(z)
+        return z
+
+    def forward(self, x):
+        z = self.encode(x)
+        z = self.decode(z)
+        return z
