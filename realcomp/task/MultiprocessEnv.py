@@ -8,24 +8,18 @@ import torch
 def worker(remote, parent_remote, env_fn_wrapper):
     parent_remote.close()
     env = env_fn_wrapper.x()
-    position = torch.zeros(env.action_space.shape[0])
     while True:
         cmd, data = remote.recv()
         if cmd == 'step':
-            position += data
-            position = torch.clamp(position, -np.pi / 2, np.pi / 2)
-            position[-2:] = torch.clamp(position[-2:], 0)
-            ob, reward, done, info = env.step(position)
+            ob, reward, done, info = env.step(data)
             if done:
                 ob = env.reset()
-                position = position * 0.
             remote.send((ob, reward, done, info))
         elif cmd == 'reset':
             if data:
                 ob = env.reset(data)
             else:
                 ob = env.reset()
-            position = position * 0.
             remote.send(ob)
         elif cmd == 'reset_task':
             ob = env.reset_task()
@@ -47,6 +41,9 @@ def worker(remote, parent_remote, env_fn_wrapper):
         elif cmd == 'get_touch_sensors':
             touch_sensors = env.robot.get_touch_sensors()
             remote.send(touch_sensors)
+        elif cmd == 'get_joint_positions':
+            joint_positions = env.robot.calc_state()
+            remote.send(joint_positions)
         elif cmd == 'render':
             if data is not None:
                 env.render(data)
@@ -270,6 +267,11 @@ class RobotVecEnv(SubprocVecEnv):
     def get_touch_sensors(self):
         for remote in self.remotes:
             remote.send(('get_touch_sensors', None))
+        return np.stack([remote.recv() for remote in self.remotes])
+
+    def get_joint_positions(self):
+        for remote in self.remotes:
+            remote.send(('get_joint_positions', None))
         return np.stack([remote.recv() for remote in self.remotes])
 
     def step_wait(self):

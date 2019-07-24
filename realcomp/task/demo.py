@@ -19,11 +19,14 @@ from MultiprocessEnv import RobotVecEnv, VecNormalize
 from train_cnn import train_cnn, test_cnn
 import torch.optim as optim
 import torch
+from scipy.interpolate import interp1d
 
+no_operation = torch.zeros((config.num_envs, 9))
 objects_names = ["mustard", "tomato", "orange", "cube"]
 
 target = "cube"
 punished_objects = []
+N = 100
 
 
 def euclidean_distance(x, y):
@@ -155,7 +158,7 @@ def demo_run():
 
             # Used to reset the normalization. All the envs. terminate at the same time, so we can do this
             if any(done):
-                envs.ret = done
+                envs.ret *= done
             
             if new_episode:
                 new_episode = False
@@ -163,8 +166,16 @@ def demo_run():
                 pass
 
             action = controller.step(observation, reward, done, test=False)
-
-            observation, reward, done, _ = envs.step(action.cpu())
+            
+            current_joints = envs.get_joint_positions()
+            desired_joints = action.cpu()
+            
+            linfit = interp1d([0,N], np.stack([current_joints, desired_joints]), axis=0)
+            for t in range(N):
+                current_action = linfit(t)
+                observation, reward, done, _ = envs.step(current_action)
+            
+            #observation, reward, done, _ = envs.step(action.cpu())
             
             reward, had_contact, acc_reward = update_reward(envs,
                                                             frame,
@@ -178,8 +189,8 @@ def demo_run():
             
             time_since_last_touch += 1
 
-            if frame % 10 == 0:
-                config.tensorboard.add_scalar('Rewards/frame_rewards', reward.mean(), frame)
+            #if frame % 10 == 0:
+                #config.tensorboard.add_scalar('Rewards/frame_rewards', reward.mean(), frame)
             
             if had_contact.max():
                 config.tensorboard.add_scalar('intrinsic/time_since_last_touch', time_since_last_touch, touches)
@@ -274,10 +285,15 @@ def showoff(controller, target="orange", punished_objects=["mustard", "tomato"])
     done = False
     num_episodes = 1
     
-    for frame in tqdm.tqdm(range(10000)):
-        time.sleep(0.02)
+    for frame in tqdm.tqdm(range(1000)):
         action = controller.step(observation, reward, done, test=True)
-        observation, reward, done, _ = envs.step(action.cpu())
+        current_joints = envs.get_joint_positions()
+        desired_joints = action.cpu()
+            
+        linfit = interp1d([0,N], np.stack([current_joints, desired_joints]), axis=0)
+        for t in range(N):
+            current_action = linfit(t)
+            observation, reward, done, _ = envs.step(current_action)
 
         #sensors = envs.get_touch_sensors()
         #if any(sensors[0]):
@@ -370,7 +386,7 @@ def update_reward(envs, frame, reward, acc_reward, init_position, goal_position,
     if (frame > config.noop_steps and ((frame + 1 - config.noop_steps) % (config.frames_per_action * config.actions_per_episode) == 0)): # True at the last frame of an EPISODE
         # Uncomment this line to have reward_episode = last_reward_of_episode
         # Comment to have reward_episode = sum(reward for reward in rewards_episode)
-        acc_reward = reward
+        #acc_reward = reward
         
         envs.ret = envs.ret * envs.gamma + acc_reward
         acc_reward = envs._rewfilt(acc_reward)

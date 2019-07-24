@@ -45,15 +45,15 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"USING {device}")
 
 render = False
-noop_steps = 120
-frames_per_action = 3
-intrinsic_frames = 250000
+noop_steps = 10
+frames_per_action = 1
+intrinsic_frames = 2500
 # render_but_no_render = True
 enjoy = True
 wtcheat = True
 save_every = False
 extrinsic_trials = 10
-num_envs = 1
+num_envs = 4
 observations_to_stack = 3
 pre_train_cnn = False
 reset_on_touch = False
