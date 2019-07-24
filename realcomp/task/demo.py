@@ -26,7 +26,7 @@ objects_names = ["mustard", "tomato", "orange", "cube"]
 
 target = "cube"
 punished_objects = []
-N = 100
+N = config.smoothed_factor
 
 
 def euclidean_distance(x, y):
@@ -211,7 +211,6 @@ def demo_run():
             if (frame > config.noop_steps) and ((frame + 1 - config.noop_steps) % config.frames_per_action == 0): # True on the last frame of an action
 
                 config.tensorboard.add_scalar('intrinsic/actions_magnitude', abs(action).mean(), frame / config.frames_per_action)
-                config.tensorboard.add_scalar('Rewards/action_rewards', acc_reward.mean(), frame / config.frames_per_action)
                 
                 if config.reset_on_touch and any(had_contact):
                     done = np.ones(config.num_envs)
@@ -371,11 +370,10 @@ def update_reward(envs, frame, reward, acc_reward, init_position, goal_position,
         reward = closeness_reward + 5 * good_contacts + goal_closeness_reward - action_magnitude_penalty - bad_contacts_penalty
         #reward = goal_closeness_reward
 
-        if frame % 10 == 0:
-            config.tensorboard.add_scalar("Rewards/Reward_distance_hand_target", closeness_reward.mean(), frame)
-            config.tensorboard.add_scalar("Rewards/Reward_distance_target_goal", goal_closeness_reward.mean(), frame)
-            #config.tensorboard.add_scalar("Rewards/Good_contacts", good_contacts.mean(), frame)
-            #config.tensorboard.add_scalar("Rewards/Bad_contacts", bad_contacts.mean(), frame)
+        config.tensorboard.add_scalar("Rewards/Reward_distance_hand_target", closeness_reward.mean(), frame)
+        config.tensorboard.add_scalar("Rewards/Reward_distance_target_goal", goal_closeness_reward.mean(), frame)
+        #config.tensorboard.add_scalar("Rewards/Good_contacts", good_contacts.mean(), frame)
+        #config.tensorboard.add_scalar("Rewards/Bad_contacts", bad_contacts.mean(), frame)
 
         #if not frame % config.frames_per_action:
             #acc_reward.fill(0)
@@ -387,7 +385,7 @@ def update_reward(envs, frame, reward, acc_reward, init_position, goal_position,
         # Uncomment this line to have reward_episode = last_reward_of_episode
         # Comment to have reward_episode = sum(reward for reward in rewards_episode)
         #acc_reward = reward
-        
+        config.tensorboard.add_scalar('Rewards/episode_rewards', acc_reward.mean(), frame / (config.frames_per_action * config.actions_per_episode))
         envs.ret = envs.ret * envs.gamma + acc_reward
         acc_reward = envs._rewfilt(acc_reward)
 
