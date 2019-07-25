@@ -53,7 +53,7 @@ envs = [make_env(env_id) for e in range(config.num_envs)]
 envs = RobotVecEnv(envs, keys=["joint_positions", "touch_sensors"]) # Add 'retina' and/or 'touch_sensors' if needed
 envs = VecNormalize(envs, size_obs_to_norm = 13 + 3*1 + 3*1, ret=True)
 
-loss_function = torch.nn.MSELoss()
+cnn_loss_function = torch.nn.MSELoss()
 
 
 #################################################
@@ -169,11 +169,16 @@ def demo_run():
             
             current_joints = envs.get_joint_positions()
             desired_joints = action.cpu()
+            desired_joints = np.clip(desired_joints, -np.pi/2, np.pi/2) # Don't want to interpolate between 'wrong' values !
             
             linfit = interp1d([0,N], np.stack([current_joints, desired_joints]), axis=0)
             for t in range(N):
                 current_action = linfit(t)
                 observation, reward, done, _ = envs.step(current_action)
+                dist = np.linalg.norm(envs.get_joint_positions()[:, :-2] - desired_joints.numpy()[:, :-2], axis=1)
+            
+                if all(dist < 0.02):
+                    break
             
             #observation, reward, done, _ = envs.step(action.cpu())
             
@@ -204,7 +209,7 @@ def demo_run():
                 picture = picture.permute(0, 3, 1, 2)
                 cnn_output = controller.cnn(picture.to(config.device))
                 cnn_output = cnn_output.detach()
-                loss = loss_function(cnn_output.to(torch.device("cpu")), torch.FloatTensor(envs.get_obj_pos(target)[:, 0:2]).to(torch.device("cpu"))).to(torch.device("cpu")).mean()
+                loss = cnn_loss_function(cnn_output.to(torch.device("cpu")), torch.FloatTensor(envs.get_obj_pos(target)[:, 0:2]).to(torch.device("cpu"))).to(torch.device("cpu")).mean()
                 config.tensorboard.add_scalar('train/Fixed_CNN_loss', loss, frame)
 
 
@@ -287,13 +292,18 @@ def showoff(controller, target="orange", punished_objects=["mustard", "tomato"])
     for frame in tqdm.tqdm(range(1000)):
         action = controller.step(observation, reward, done, test=True)
         current_joints = envs.get_joint_positions()
-        desired_joints = action.cpu()
+        desired_joints = action.cpu().numpy()
+        desired_joints = np.clip(desired_joints, -np.pi/2, np.pi/2)
             
         linfit = interp1d([0,N], np.stack([current_joints, desired_joints]), axis=0)
         for t in range(N):
             current_action = linfit(t)
             observation, reward, done, _ = envs.step(current_action)
-
+            dist = np.linalg.norm(envs.get_joint_positions()[:, :-2] - desired_joints.numpy()[:, :-2], axis=1)
+            
+            if all(dist < 0.02):
+                break
+            
         #sensors = envs.get_touch_sensors()
         #if any(sensors[0]):
             # print(sensors[0])
