@@ -26,8 +26,8 @@ objects_names = ["mustard", "tomato", "orange", "cube"]
 
 target = "cube"
 punished_objects = []
-N = config.smoothed_factor
 
+max_diff = np.stack([[0.08, 0.08, 0.07, 0.08, 0.07, 0.1, 0.1, 0.1, 0.1] for _ in range(config.num_envs)])
 
 def euclidean_distance(x, y):
     if len(x.shape) <= 1:
@@ -168,19 +168,11 @@ def demo_run():
             action = controller.step(observation, reward, done, test=False)
             
             current_joints = envs.get_joint_positions()
-            desired_joints = action.cpu()
+            desired_joints = action.cpu().numpy()
             desired_joints = np.clip(desired_joints, -np.pi/2, np.pi/2) # Don't want to interpolate between 'wrong' values !
             
-            linfit = interp1d([0,N], np.stack([current_joints, desired_joints]), axis=0)
-            for t in range(N):
-                current_action = linfit(t)
-                observation, reward, done, _ = envs.step(current_action)
-                dist = np.linalg.norm(envs.get_joint_positions()[:, :-2] - desired_joints.numpy()[:, :-2], axis=1)
-            
-                if all(dist < 0.02):
-                    break
-            
-            #observation, reward, done, _ = envs.step(action.cpu())
+            current_action = limitActionByJoint(current_joints, desired_joints, max_diff)
+            observation, reward, done, _ = envs.step(current_action)
             
             reward, had_contact, acc_reward = update_reward(envs,
                                                             frame,
@@ -289,21 +281,16 @@ def showoff(controller, target="orange", punished_objects=["mustard", "tomato"])
     done = False
     num_episodes = 1
     
-    for frame in tqdm.tqdm(range(1000)):
+    for frame in tqdm.tqdm(range(10 * config.frames_per_action * config.actions_per_episode)):
         action = controller.step(observation, reward, done, test=True)
+
         current_joints = envs.get_joint_positions()
         desired_joints = action.cpu().numpy()
-        desired_joints = np.clip(desired_joints, -np.pi/2, np.pi/2)
-            
-        linfit = interp1d([0,N], np.stack([current_joints, desired_joints]), axis=0)
-        for t in range(N):
-            current_action = linfit(t)
-            observation, reward, done, _ = envs.step(current_action)
-            dist = np.linalg.norm(envs.get_joint_positions()[:, :-2] - desired_joints.numpy()[:, :-2], axis=1)
-            
-            if all(dist < 0.02):
-                break
-            
+        desired_joints = np.clip(desired_joints, -np.pi/2, np.pi/2) # Don't want to interpolate between 'wrong' values !
+        
+        current_action = limitActionByJoint(current_joints, desired_joints, max_diff)
+        observation, reward, done, _ = envs.step(current_action)
+
         #sensors = envs.get_touch_sensors()
         #if any(sensors[0]):
             # print(sensors[0])
@@ -380,10 +367,11 @@ def update_reward(envs, frame, reward, acc_reward, init_position, goal_position,
         reward = closeness_reward + 5 * good_contacts + goal_closeness_reward - action_magnitude_penalty - bad_contacts_penalty
         #reward = goal_closeness_reward
 
-        config.tensorboard.add_scalar("Rewards/Reward_distance_hand_target", closeness_reward.mean(), frame)
-        config.tensorboard.add_scalar("Rewards/Reward_distance_target_goal", goal_closeness_reward.mean(), frame)
-        #config.tensorboard.add_scalar("Rewards/Good_contacts", good_contacts.mean(), frame)
-        #config.tensorboard.add_scalar("Rewards/Bad_contacts", bad_contacts.mean(), frame)
+        if (frame + 1 - config.noop_steps) % config.frames_per_action == 0:
+            config.tensorboard.add_scalar("Rewards/Reward_distance_hand_target", closeness_reward.mean(), frame)
+            config.tensorboard.add_scalar("Rewards/Reward_distance_target_goal", goal_closeness_reward.mean(), frame)
+            #config.tensorboard.add_scalar("Rewards/Good_contacts", good_contacts.mean(), frame)
+            #config.tensorboard.add_scalar("Rewards/Bad_contacts", bad_contacts.mean(), frame)
 
         #if not frame % config.frames_per_action:
             #acc_reward.fill(0)
@@ -404,6 +392,12 @@ def update_reward(envs, frame, reward, acc_reward, init_position, goal_position,
     else:
         return np.zeros_like(acc_reward), good_contacts, acc_reward
 
+
+    
+def limitActionByJoint(current_joints, desired_joints, max_diff):
+    min_diff = -max_diff
+    diff = np.clip(desired_joints - current_joints, -max_diff, max_diff)
+    return current_joints + diff
 
 if __name__ == "__main__":
     # os.system('git add .')
