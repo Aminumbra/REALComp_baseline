@@ -79,7 +79,7 @@ def demo_run():
                           init_wait=config.noop_steps,
                           clip=0.2,
                           entropy_coeff=0.01,
-                          log_std=-0.5, # TODO : see if this is an actual impact. Default : 0.0
+                          log_std=0., # TODO : see if this is an actual impact. Default : 0.0
                           use_parallel=True,
                           num_parallel=config.num_envs,
                           logs=True,
@@ -228,6 +228,8 @@ def demo_run():
     # controller.save_models("models.pth")
 
     config.tensorboard.close()
+    controller.save_models("models/" + config.experiment_name + ".pth")
+    
     print("Starting extrinsic phase...")
     if config.enjoy:
         input("Press enter to test the agent and visualize its actions !")
@@ -267,7 +269,7 @@ def showoff(controller, target="orange", punished_objects=["mustard", "tomato"])
     envs = VecNormalize(envs, size_obs_to_norm = 13 + 3*1 + 3*1, ret=True)
     goal_position_0 = np.array([[-0.10, 0.40, 0.41]])
     goal_position_1 = np.array([[-0.10, -0.40, 0.41]])
-    goal_positions = np.array([goal_position_0, goal_position_1])
+    goal_positions = np.array([goal_position_0, goal_position_0]) # TO CHANGE TO HAVE SEVERAL GOALS
     current_goal = 0
     
     envs.set_goal_position(goal_positions[1])
@@ -364,8 +366,8 @@ def update_reward(envs, frame, reward, acc_reward, init_position, goal_position,
 
         action_magnitude_penalty = 0 #abs(action).mean(1) # Avoids shaky movements
         bad_contacts_penalty = 0 #30 * bad_contacts  # The penalty for touching something else is always active, not only on last frame
-        reward = closeness_reward + 5 * good_contacts + goal_closeness_reward - action_magnitude_penalty - bad_contacts_penalty
-        #reward = goal_closeness_reward
+        #reward = closeness_reward + 5 * good_contacts + goal_closeness_reward - action_magnitude_penalty - bad_contacts_penalty
+        reward = goal_closeness_reward
 
         if (frame + 1 - config.noop_steps) % config.frames_per_action == 0:
             config.tensorboard.add_scalar("Rewards/Reward_distance_hand_target", closeness_reward.mean(), frame)
@@ -382,7 +384,7 @@ def update_reward(envs, frame, reward, acc_reward, init_position, goal_position,
     if (frame > config.noop_steps and ((frame + 1 - config.noop_steps) % (config.frames_per_action * config.actions_per_episode) == 0)): # True at the last frame of an EPISODE
         # Uncomment this line to have reward_episode = last_reward_of_episode
         # Comment to have reward_episode = sum(reward for reward in rewards_episode)
-        #acc_reward = reward
+        acc_reward = reward
         config.tensorboard.add_scalar('Rewards/episode_rewards', acc_reward.mean(), frame / (config.frames_per_action * config.actions_per_episode))
         envs.ret = envs.ret * envs.gamma + acc_reward
         acc_reward = envs._rewfilt(acc_reward)

@@ -46,8 +46,8 @@ print(f"USING {device}")
 
 render = False
 noop_steps = 10
-frames_per_action = 30
-intrinsic_frames = 1500000
+frames_per_action = 20
+intrinsic_frames = 2000000
 # render_but_no_render = True
 enjoy = True
 wtcheat = True
