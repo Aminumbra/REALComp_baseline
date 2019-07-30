@@ -27,7 +27,7 @@ objects_names = ["mustard", "tomato", "orange", "cube"]
 target = "cube"
 punished_objects = []
 
-max_diff = np.stack([[0.08, 0.08, 0.07, 0.08, 0.07, 0.1, 0.1, 0.1, 0.1] for _ in range(config.num_envs)])
+max_diff = np.stack([[0.06, 0.06, 0.05, 0.06, 0.05, 0.1, 0.1, 0.1, 0.1] for _ in range(config.num_envs)])
 
 def euclidean_distance(x, y):
     if len(x.shape) <= 1:
@@ -73,8 +73,8 @@ def demo_run():
                           gamma=0.95,
                           gae_lambda=0.95,
                           epochs=5,
-                          horizon=64,
-                          mini_batch_size=8,
+                          horizon=16,
+                          mini_batch_size=4,
                           frames_per_action=config.frames_per_action,
                           init_wait=config.noop_steps,
                           clip=0.2,
@@ -165,22 +165,28 @@ def demo_run():
                 # Add things : change current goal, etc
                 pass
 
-            action = controller.step(observation, reward, done, test=False)
+            action = controller.step(observation, reward, done, test=False).cpu().numpy()
+            action_fast = action[:, :controller.num_actions]
+            action_slow = action[:, controller.num_actions:]
+
+            for _ in range(30):
+                envs.step(action_fast)
+
+            for _ in range(80):
+                current_joints = envs.get_joint_positions()
+                desired_joints = action_slow
+                desired_joints = np.clip(desired_joints, -np.pi/2, np.pi/2) # Don't want to interpolate between 'wrong' values !
             
-            current_joints = envs.get_joint_positions()
-            desired_joints = action.cpu().numpy()
-            desired_joints = np.clip(desired_joints, -np.pi/2, np.pi/2) # Don't want to interpolate between 'wrong' values !
-            
-            current_action = limitActionByJoint(current_joints, desired_joints, max_diff)
-            observation, reward, done, _ = envs.step(current_action)
-            
+                current_action = limitActionByJoint(current_joints, desired_joints, max_diff)
+                observation, reward, done, _ = envs.step(current_action)
+       
             reward, had_contact, acc_reward = update_reward(envs,
                                                             frame,
                                                             reward,
                                                             acc_reward,
                                                             target=target,
                                                             punished_objects=punished_objects,
-                                                            action=action.cpu().numpy(),
+                                                            action=action,
                                                             init_position=init_position,
                                                             goal_position=envs.goal_position)
             
@@ -213,7 +219,11 @@ def demo_run():
                     done = np.ones(config.num_envs)
                     selected_goals = np.random.choice(2, config.num_envs)
                     envs.set_goal_position(goals_positions[selected_goals])
-                    observation = envs.reset(config.random_reset)
+                    if any(euclidean_distance(init_position, envs.get_obj_pos(target)) > 0.03):
+                        observation = envs.reset(config.random_reset)
+                    else:
+                        for _ in range(20):
+                            observation, _, _, _ = envs.step(np.zeros((config.num_envs, 9)))
                     init_position = envs.get_obj_pos(target)
                     new_episode = True
 
@@ -221,7 +231,11 @@ def demo_run():
                 done = np.ones(config.num_envs)
                 selected_goals = np.random.choice(2, config.num_envs)
                 envs.set_goal_position(goals_positions[selected_goals])
-                observation = envs.reset(config.random_reset)
+                if any(euclidean_distance(init_position, envs.get_obj_pos(target)) > 0.03):
+                    observation = envs.reset(config.random_reset)
+                else:
+                    for _ in range(20):
+                        observation, _, _, _ = envs.step(np.zeros((config.num_envs, 9)))
                 init_position = envs.get_obj_pos(target)
                 new_episode = True
                 
@@ -283,15 +297,21 @@ def showoff(controller, target="orange", punished_objects=["mustard", "tomato"])
     done = False
     num_episodes = 1
     
-    for frame in tqdm.tqdm(range(10 * config.frames_per_action * config.actions_per_episode)):
-        action = controller.step(observation, reward, done, test=True)
+    for frame in tqdm.tqdm(range(20 * config.frames_per_action * config.actions_per_episode)):
+        action = controller.step(observation, reward, done, test=True).cpu().numpy()
+        action_fast = action[:, :controller.num_actions]
+        action_slow = action[:, controller.num_actions:]
+    
+        for _ in range(30):
+            envs.step(action_fast)
 
-        current_joints = envs.get_joint_positions()
-        desired_joints = action.cpu().numpy()
-        desired_joints = np.clip(desired_joints, -np.pi/2, np.pi/2) # Don't want to interpolate between 'wrong' values !
+        for _ in range(80):
+            current_joints = envs.get_joint_positions()
+            desired_joints = action_slow
+            desired_joints = np.clip(desired_joints, -np.pi/2, np.pi/2) # Don't want to interpolate between 'wrong' values !
         
-        current_action = limitActionByJoint(current_joints, desired_joints, max_diff)
-        observation, reward, done, _ = envs.step(current_action)
+            current_action = limitActionByJoint(current_joints, desired_joints, max_diff)
+            observation, reward, done, _ = envs.step(current_action)
 
         #sensors = envs.get_touch_sensors()
         #if any(sensors[0]):

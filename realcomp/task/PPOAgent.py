@@ -277,7 +277,7 @@ class PPOAgent:
         if shape_pic is not None:
             self.cnn = CNN(shape_pic=shape_pic, size_output=size_cnn_output).to(config.device)
 
-        self.actor = ModelActor(self.size_obs + size_cnn_output, self.num_actions, size_layers=size_layers, lr=actor_lr, log_std=log_std).to(config.device)
+        self.actor = ModelActor(self.size_obs + size_cnn_output, 2 * self.num_actions, size_layers=size_layers, lr=actor_lr, log_std=log_std).to(config.device)
         self.critic = ModelCritic(self.size_obs + size_cnn_output, size_layers=size_layers, lr=critic_lr).to(config.device)
 
         self.observations_history = collections.deque(maxlen=config.observations_to_stack)
@@ -487,9 +487,9 @@ class PPOAgent:
         if self.already_waited < self.init_wait:
             self.already_waited += 1
             if self.use_parallel:
-                return torch.zeros(self.num_parallel, self.num_actions)
+                return torch.zeros(self.num_parallel, 2 * self.num_actions)
             else:
-                return torch.zeros(self.num_actions)
+                return torch.zeros(2 * self.num_actions)
 
         if self.num_repeated_action < self.frames_per_action:
             self.num_repeated_action += 1
