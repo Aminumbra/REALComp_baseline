@@ -149,97 +149,95 @@ def demo_run():
 
     if config.model_to_load:
         controller.load_models(config.model_to_load)
-    else:
-        print("Starting intrinsic phase...")
-        for frame in tqdm.tqdm(range(config.intrinsic_frames // config.num_envs)):
-            # time.sleep(0.05)
-            # if config.save_every and frame and frame % config.save_every == 0:
-            #     controller.save_models("models.pth")
 
-            # Used to reset the normalization. All the envs. terminate at the same time, so we can do this
-            if any(done):
-                envs.ret *= done
-            
-            if new_episode:
-                new_episode = False
-                # Add things : change current goal, etc
-                pass
+    print("Starting intrinsic phase...")
+    for frame in tqdm.tqdm(range(config.intrinsic_frames // config.num_envs)):
+        # time.sleep(0.05)
+        # if config.save_every and frame and frame % config.save_every == 0:
+        #     controller.save_models("models.pth")
 
-            action = controller.step(observation, reward, done, test=False).cpu().numpy()
-            action_fast = action[:, :controller.num_actions]
-            action_slow = action[:, controller.num_actions:]
+        # Used to reset the normalization. All the envs. terminate at the same time, so we can do this
+        if any(done):
+            envs.ret *= done
 
-            for _ in range(30):
-                envs.step(action_fast)
+        if new_episode:
+            new_episode = False
+            # Add things : change current goal, etc
+            pass
 
-            for _ in range(80):
-                current_joints = envs.get_joint_positions()
-                desired_joints = action_slow
-                desired_joints = np.clip(desired_joints, -np.pi/2, np.pi/2) # Don't want to interpolate between 'wrong' values !
-            
-                current_action = limitActionByJoint(current_joints, desired_joints, max_diff)
-                observation, reward, done, _ = envs.step(current_action)
-       
-            reward, had_contact, acc_reward = update_reward(envs,
-                                                            frame,
-                                                            reward,
-                                                            acc_reward,
-                                                            target=target,
-                                                            punished_objects=punished_objects,
-                                                            action=action,
-                                                            init_position=init_position,
-                                                            goal_position=envs.goal_position)
-            
-            time_since_last_touch += 1
+        action = controller.step(observation, reward, done, test=False).cpu().numpy()
+        action_fast = action[:, :controller.num_actions]
+        action_slow = action[:, controller.num_actions:]
 
-            #if frame % 10 == 0:
-                #config.tensorboard.add_scalar('Rewards/frame_rewards', reward.mean(), frame)
-            
-            if had_contact.max():
-                config.tensorboard.add_scalar('intrinsic/time_since_last_touch', time_since_last_touch, touches)
-                touches += 1
-                time_since_last_touch = 0
+        for _ in range(25):
+            envs.step(action_fast)
 
-            if config.pre_train_cnn:
-                picture = observation[:, 13:]
-                picture = picture.reshape((controller.num_parallel, controller.shape_pic[0], controller.shape_pic[1], controller.shape_pic[2]))
-                picture = torch.FloatTensor(picture)
-                picture = picture.permute(0, 3, 1, 2)
-                cnn_output = controller.cnn(picture.to(config.device))
-                cnn_output = cnn_output.detach()
-                loss = cnn_loss_function(cnn_output.to(torch.device("cpu")), torch.FloatTensor(envs.get_obj_pos(target)[:, 0:2]).to(torch.device("cpu"))).to(torch.device("cpu")).mean()
-                config.tensorboard.add_scalar('train/Fixed_CNN_loss', loss, frame)
+        for _ in range(100):
+            current_joints = envs.get_joint_positions()
+            desired_joints = action_slow
+            desired_joints = np.clip(desired_joints, -np.pi/2, np.pi/2) # Don't want to interpolate between 'wrong' values !
+
+            current_action = limitActionByJoint(current_joints, desired_joints, max_diff)
+            observation, reward, done, _ = envs.step(current_action)
+
+        reward, had_contact, acc_reward = update_reward(envs,
+                                                        frame,
+                                                        reward,
+                                                        acc_reward,
+                                                        target=target,
+                                                        punished_objects=punished_objects,
+                                                        action=action,
+                                                        init_position=init_position,
+                                                        goal_position=envs.goal_position)
+
+        time_since_last_touch += 1
+
+        #if frame % 10 == 0:
+            #config.tensorboard.add_scalar('Rewards/frame_rewards', reward.mean(), frame)
+
+        if had_contact.max():
+            config.tensorboard.add_scalar('intrinsic/time_since_last_touch', time_since_last_touch, touches)
+            touches += 1
+            time_since_last_touch = 0
+
+        if config.pre_train_cnn:
+            picture = observation[:, 13:]
+            picture = picture.reshape((controller.num_parallel, controller.shape_pic[0], controller.shape_pic[1], controller.shape_pic[2]))
+            picture = torch.FloatTensor(picture)
+            picture = picture.permute(0, 3, 1, 2)
+            cnn_output = controller.cnn(picture.to(config.device))
+            cnn_output = cnn_output.detach()
+            loss = cnn_loss_function(cnn_output.to(torch.device("cpu")), torch.FloatTensor(envs.get_obj_pos(target)[:, 0:2]).to(torch.device("cpu"))).to(torch.device("cpu")).mean()
+            config.tensorboard.add_scalar('train/Fixed_CNN_loss', loss, frame)
 
 
-            if (frame > config.noop_steps) and ((frame + 1 - config.noop_steps) % config.frames_per_action == 0): # True on the last frame of an action
+        if (frame > config.noop_steps) and ((frame + 1 - config.noop_steps) % config.frames_per_action == 0): # True on the last frame of an action
 
-                config.tensorboard.add_scalar('intrinsic/actions_magnitude', abs(action).mean(), frame / config.frames_per_action)
-                
-                if config.reset_on_touch and any(had_contact):
-                    done = np.ones(config.num_envs)
-                    selected_goals = np.random.choice(2, config.num_envs)
-                    envs.set_goal_position(goals_positions[selected_goals])
-                    if any(euclidean_distance(init_position, envs.get_obj_pos(target)) > 0.03):
-                        observation = envs.reset(config.random_reset)
-                    else:
-                        for _ in range(20):
-                            observation, _, _, _ = envs.step(np.zeros((config.num_envs, 9)))
-                    init_position = envs.get_obj_pos(target)
-                    new_episode = True
+            config.tensorboard.add_scalar('intrinsic/actions_magnitude', abs(action).mean(), frame / config.frames_per_action)
 
-            if (frame > config.noop_steps) and ((frame + 1 - config.noop_steps) % (config.frames_per_action * config.actions_per_episode) == 0):
+            if config.reset_on_touch and any(had_contact):
                 done = np.ones(config.num_envs)
                 selected_goals = np.random.choice(2, config.num_envs)
                 envs.set_goal_position(goals_positions[selected_goals])
                 if any(euclidean_distance(init_position, envs.get_obj_pos(target)) > 0.03):
                     observation = envs.reset(config.random_reset)
                 else:
-                    for _ in range(20):
+                    for _ in range(30):
                         observation, _, _, _ = envs.step(np.zeros((config.num_envs, 9)))
                 init_position = envs.get_obj_pos(target)
                 new_episode = True
-                
-    # controller.save_models("models.pth")
+
+        if (frame > config.noop_steps) and ((frame + 1 - config.noop_steps) % (config.frames_per_action * config.actions_per_episode) == 0):
+            done = np.ones(config.num_envs)
+            selected_goals = np.random.choice(2, config.num_envs)
+            envs.set_goal_position(goals_positions[selected_goals])
+            if any(euclidean_distance(init_position, envs.get_obj_pos(target)) > 0.03):
+                observation = envs.reset(config.random_reset)
+            else:
+                for _ in range(30):
+                    observation, _, _, _ = envs.step(np.zeros((config.num_envs, 9)))
+            init_position = envs.get_obj_pos(target)
+            new_episode = True
 
     config.tensorboard.close()
     controller.save_models("models/" + config.experiment_name + ".pth")
@@ -302,10 +300,10 @@ def showoff(controller, target="orange", punished_objects=["mustard", "tomato"])
         action_fast = action[:, :controller.num_actions]
         action_slow = action[:, controller.num_actions:]
     
-        for _ in range(30):
+        for _ in range(25):
             envs.step(action_fast)
 
-        for _ in range(80):
+        for _ in range(100):
             current_joints = envs.get_joint_positions()
             desired_joints = action_slow
             desired_joints = np.clip(desired_joints, -np.pi/2, np.pi/2) # Don't want to interpolate between 'wrong' values !

@@ -366,6 +366,15 @@ class PPOAgent:
         checkpoint = torch.load(path)
         self.actor.load_state_dict(checkpoint["model_actor"])
         self.critic.load_state_dict(checkpoint["model_critic"])
+
+        # Not sure that it really is needed but in doubt ...
+        params = list(self.actor.parameters()) + list(self.critic.parameters())
+
+        if self.shape_pic:
+            params += list(self.cnn.parameters())
+
+        self.optimizer = optim.Adam(params=params, lr=config.lr)
+
         # self.actor.eval()
         # self.critic.eval()
 
