@@ -79,7 +79,7 @@ def demo_run():
                           init_wait=config.noop_steps,
                           clip=0.2,
                           entropy_coeff=0.01,
-                          log_std=0., # TODO : see if this is an actual impact. Default : 0.0
+                          log_std=0.3, # TODO : see if this is an actual impact. Default : 0.0
                           use_parallel=True,
                           num_parallel=config.num_envs,
                           logs=True,
@@ -172,7 +172,7 @@ def demo_run():
         for _ in range(25):
             envs.step(action_fast)
 
-        for _ in range(100):
+        for _ in range(125):
             current_joints = envs.get_joint_positions()
             desired_joints = action_slow
             desired_joints = np.clip(desired_joints, -np.pi/2, np.pi/2) # Don't want to interpolate between 'wrong' values !
@@ -303,7 +303,7 @@ def showoff(controller, target="orange", punished_objects=["mustard", "tomato"])
         for _ in range(25):
             envs.step(action_fast)
 
-        for _ in range(100):
+        for _ in range(125):
             current_joints = envs.get_joint_positions()
             desired_joints = action_slow
             desired_joints = np.clip(desired_joints, -np.pi/2, np.pi/2) # Don't want to interpolate between 'wrong' values !
@@ -368,8 +368,8 @@ def update_reward(envs, frame, reward, acc_reward, init_position, goal_position,
     if frame > config.noop_steps:
 
         distance_robot_target = np.minimum.reduce([euclidean_distance(target_pos, envs.get_part_pos(robot_part)) for robot_part in robot_useful_parts])
-        distance_target_goal  = euclidean_distance(target_pos, goal_position)
-        init_distance = euclidean_distance(init_position, goal_position)
+        distance_target_goal  = euclidean_distance(target_pos[:, :2], goal_position[:, :2])
+        init_distance = euclidean_distance(init_position[:, :2], goal_position[:, :2])
         
         closeness = np.power(distance_robot_target + 1e-6, -2)
         closeness_reward = np.clip(closeness, 0, 100)
