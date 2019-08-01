@@ -143,7 +143,7 @@ def demo_run():
     goal_position_0 = np.array([-0.15, 0.40, 0.41]) # Left of the table, from the robot POV
     goal_position_1 = np.array([-0.15, -0.40, 0.41]) # Right of the table, from the robot POV
     goal_position_2 = np.array([-0.05, 0.0, 0.41]) # Center of the table
-    goals_positions = np.array([goal_position_0, goal_position_0])
+    goals_positions = np.array([goal_position_0, goal_position_1])
     selected_goals = np.random.choice(2, config.num_envs)
     envs.set_goal_position(goals_positions[selected_goals])
 
@@ -217,8 +217,9 @@ def demo_run():
 
             if config.reset_on_touch and any(had_contact):
                 done = np.ones(config.num_envs)
-                selected_goals = np.random.choice(2, config.num_envs)
-                envs.set_goal_position(goals_positions[selected_goals])
+                #selected_goals = np.random.choice(2, config.num_envs)
+                #envs.set_goal_position(goals_positions[selected_goals])
+                envs.set_goal_position(gen_random_goals())
                 if any(euclidean_distance(init_position, envs.get_obj_pos(target)) > 0.03):
                     observation = envs.reset(config.random_reset)
                 else:
@@ -229,8 +230,9 @@ def demo_run():
 
         if (frame > config.noop_steps) and ((frame + 1 - config.noop_steps) % (config.frames_per_action * config.actions_per_episode) == 0):
             done = np.ones(config.num_envs)
-            selected_goals = np.random.choice(2, config.num_envs)
-            envs.set_goal_position(goals_positions[selected_goals])
+            #selected_goals = np.random.choice(2, config.num_envs)
+            #envs.set_goal_position(goals_positions[selected_goals])
+            envs.set_goal_position(gen_random_goals())
             if any(euclidean_distance(init_position, envs.get_obj_pos(target)) > 0.03):
                 observation = envs.reset(config.random_reset)
             else:
@@ -281,7 +283,7 @@ def showoff(controller, target="orange", punished_objects=["mustard", "tomato"])
     envs = VecNormalize(envs, size_obs_to_norm = 13 + 3*1 + 3*1, ret=True)
     goal_position_0 = np.array([[-0.10, 0.40, 0.41]])
     goal_position_1 = np.array([[-0.10, -0.40, 0.41]])
-    goal_positions = np.array([goal_position_0, goal_position_0]) # TO CHANGE TO HAVE SEVERAL GOALS
+    goal_positions = np.array([goal_position_0, goal_position_1]) # TO CHANGE TO HAVE SEVERAL GOALS
     current_goal = 0
     
     envs.set_goal_position(goal_positions[1])
@@ -418,6 +420,17 @@ def limitActionByJoint(current_joints, desired_joints, max_diff):
     min_diff = -max_diff
     diff = np.clip(desired_joints - current_joints, -max_diff, max_diff)
     return current_joints + diff
+
+
+def gen_random_goals():
+    rand_x = np.random.uniform(low=-0.15, high=0.05, size=config.num_envs)
+    rand_y = np.random.uniform(low=-0.40, high=0.40, size=config.num_envs)
+    goals = np.zeros((config.num_envs, 3))
+    
+    for i in range(config.num_envs):
+        goals[i] = np.array([rand_x[i], rand_y[i], 0.41])
+
+    return goals
 
 if __name__ == "__main__":
     # os.system('git add .')

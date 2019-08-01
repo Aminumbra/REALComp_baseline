@@ -293,7 +293,7 @@ class VecNormalize():
     and returns from an environment.
     """
 
-    def __init__(self, envs, size_obs_to_norm=13, ob=True, ret=True, clipob=1., cliprew=1., gamma=0.95, epsilon=1e-8, use_tf=False):
+    def __init__(self, envs, size_obs_to_norm=13, ob=True, ret=True, clipob=5., cliprew=5., gamma=0.95, epsilon=1e-8, use_tf=False):
         self.envs = envs
         self.size_obs_to_norm = size_obs_to_norm
 
