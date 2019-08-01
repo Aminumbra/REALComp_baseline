@@ -84,14 +84,19 @@ class AutoEncoder(nn.Module):
     def __init__(self, image_channels=3, h_dim=4608, z_dim=32):
         super(AutoEncoder, self).__init__()
         self.encoder = nn.Sequential(
-            nn.Conv2d(image_channels, 16, kernel_size=4, stride=2),
+            nn.Conv2d(image_channels, 16, kernel_size=5, stride=1),
             nn.ReLU(),
-            nn.Conv2d(16, 32, kernel_size=4, stride=2),
+            nn.Conv2d(16, 32, kernel_size=5, stride=1),
             nn.ReLU(),
-            nn.Conv2d(32, 64, kernel_size=4, stride=2),
+            nn.Conv2d(32, 64, kernel_size=5, stride=1),
             nn.ReLU(),
-            nn.Conv2d(64, 128, kernel_size=4, stride=2),
+            nn.Conv2d(64, 128, kernel_size=5, stride=2),
             nn.ReLU(),
+            nn.Conv2d(128, 128, kernel_size=5, stride=2),
+            nn.ReLU(),
+            nn.Conv2d(128, 128, kernel_size=5, stride=2),
+            nn.ReLU(),
+            nn.MaxPool2D(3),
             Flatten()
         )
         
@@ -100,8 +105,9 @@ class AutoEncoder(nn.Module):
         
         self.decoder = nn.Sequential(
             UnFlatten(),
-            nn.ConvTranspose2d(h_dim, 64, kernel_size=5, stride=2),
+            nn.ConvTranspose2d(h_dim, 128, kernel_size=5, stride=1),
             nn.ReLU(),
+            nn.ConvTranspose2d(
             nn.ConvTranspose2d(64, 32, kernel_size=5, stride=2),
             nn.ReLU(),
             nn.ConvTranspose2d(32, 16, kernel_size=5, stride=2),
