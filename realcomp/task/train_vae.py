@@ -30,10 +30,11 @@ experiment_name = time.strftime("%Y_%m_%d-%H_%M_%S")
 if len(sys.argv) > 1:
     experiment_name = f'{sys.argv[1]}:{time.strftime("%Y_%m_%d-%H_%M_%S")}{os.getpid()}'
     
-tensorboard = tensorboardX.SummaryWriter("vae/" + experiment_name, flush_secs=1)
+if len(sys.argv) > 2 and sys.argv[2] == "train":
+    tensorboard = tensorboardX.SummaryWriter("vae/" + experiment_name, flush_secs=1)
 
-vae = VAE(image_channels=3)
-optimizer = optim.Adam(vae.parameters(), lr=1e-4)
+    vae = VAE(image_channels=3)
+    optimizer = optim.Adam(vae.parameters(), lr=1e-4)
 
 
 # Define functions
@@ -54,7 +55,7 @@ def loss_fn(recon_x, x, mu, logvar):
 # Training functions 
 def collect_pictures(n=10000,
                      crop=True,
-                     path="pictures/pictures/",
+                     path="pictures/pictures_cube/",
                      freq_images=5):
 
     env = gym.make('REALComp-v0')
@@ -235,13 +236,17 @@ def test(crop=True,
 if __name__=="__main__":
 
     try:
-        #collect_pictures(n=10000)
-        train_loader = load_data()
-        train(data_loader=train_loader, epochs=100)
-        tensorboard.close()
-        torch.save(vae.state_dict(), "vae_trained.pth")
-        test()
+        if len(sys.argv) > 2:
+            arg = f'{sys.argv[2]}'
+            if arg == "collect":
+                collect_pictures(n=10000)
+            elif arg == "train":
+                train_loader = load_data()
+                train(data_loader=train_loader, epochs=100)
+                tensorboard.close()
+                torch.save(vae.state_dict(), "vae_trained.pth")
+                test()
 
     except KeyboardInterrupt:
         tensorboard.close()
-        test()
+        #test()
