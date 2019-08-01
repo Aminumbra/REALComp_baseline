@@ -222,9 +222,12 @@ def demo_run():
 
                 if any(euclidean_distance(init_position, target_pos) > 0.03):
                     observation = envs.reset(config.random_reset)
+                    for _ in range(15):
+                        envs.step(no_operation)
+                        
                 else:
                     for _ in range(30):
-                        observation, _, _, _ = envs.step(np.zeros((config.num_envs, 9)))
+                        observation, _, _, _ = envs.step(no_operation)
                 init_position = envs.get_obj_pos(target)
                 new_episode = True
 
@@ -238,6 +241,9 @@ def demo_run():
                 
             if any(euclidean_distance(init_position, target_pos) > 0.03):
                 observation = envs.reset(config.random_reset)
+                for _ in range(15):
+                    envs.step(no_operation)
+                    
             else:
                 for _ in range(30):
                     observation, _, _, _ = envs.step(np.zeros((config.num_envs, 9)))
@@ -334,6 +340,8 @@ def showoff(controller, target="orange", punished_objects=["mustard", "tomato"])
 
                 if any(euclidean_distance(init_position, target_pos) > 0.03):
                     observation = envs.reset(config.random_reset)
+                    for _ in range(15):
+                        envs.step(no_operation)
                 else:
                     for _ in range(30):
                         envs.step(np.zeros((config.num_envs, 9)))
@@ -389,17 +397,20 @@ def update_reward(envs, frame, reward, acc_reward, init_position, goal_position,
         closeness_reward = np.clip(closeness, 0, 100)
 
         goal_closeness = np.power(distance_target_goal + 1e-6, -2)
-        goal_closeness = np.clip(goal_closeness, 0, 100)
+        #goal_closeness = np.clip(goal_closeness, 0, 100)
         
         init_closeness = np.power(init_distance + 1e-6, -2)
-        init_closeness = np.clip(init_closeness, 0, 100) # Useful when the target is randomly respawned near the goal
+        #init_closeness = np.clip(init_closeness, 0, 100) # Useful when the target is randomly respawned near the goal
 
         goal_closeness_reward = 5 * (goal_closeness - init_closeness)
 
+        moved_object = euclidean_distance(target_pos, init_position) > 0.03
+        bonus_moving_object = 2 * moved_object
+        
         action_magnitude_penalty = 0 #abs(action).mean(1) # Avoids shaky movements
         bad_contacts_penalty = 0 #30 * bad_contacts  # The penalty for touching something else is always active, not only on last frame
         #reward = closeness_reward + 5 * good_contacts + goal_closeness_reward - action_magnitude_penalty - bad_contacts_penalty
-        reward = goal_closeness_reward
+        reward = goal_closeness_reward + bonus_moving_object
 
         if (frame + 1 - config.noop_steps) % config.frames_per_action == 0:
             config.tensorboard.add_scalar("Rewards/Reward_distance_hand_target", closeness_reward.mean(), frame)
