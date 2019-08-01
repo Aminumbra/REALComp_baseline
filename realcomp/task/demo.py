@@ -140,12 +140,9 @@ def demo_run():
     new_episode = True
 
     init_position = envs.get_obj_pos(target)
-    goal_position_0 = np.array([-0.15, 0.40, 0.41]) # Left of the table, from the robot POV
-    goal_position_1 = np.array([-0.15, -0.40, 0.41]) # Right of the table, from the robot POV
-    goal_position_2 = np.array([-0.05, 0.0, 0.41]) # Center of the table
-    goals_positions = np.array([goal_position_0, goal_position_1])
-    selected_goals = np.random.choice(2, config.num_envs)
-    envs.set_goal_position(goals_positions[selected_goals])
+    # If we want a fixed goal : (center = desired_goal, radius=0)
+    new_goals = gen_random_goals(center=init_position, radius=np.ones(config.num_envs) * 0.15)
+    envs.set_goal_position(new_goals)
 
     if config.model_to_load:
         controller.load_models(config.model_to_load)
@@ -217,10 +214,13 @@ def demo_run():
 
             if config.reset_on_touch and any(had_contact):
                 done = np.ones(config.num_envs)
-                #selected_goals = np.random.choice(2, config.num_envs)
-                #envs.set_goal_position(goals_positions[selected_goals])
-                envs.set_goal_position(gen_random_goals())
-                if any(euclidean_distance(init_position, envs.get_obj_pos(target)) > 0.03):
+                target_pos = envs.get_obj_pos(target)
+    
+                if config.random_goal == "random":
+                    new_goals = gen_random_goals(center=target_pos, radius=np.ones(config.num_envs) * 0.15)
+                    envs.set_goal_position(new_goals)
+
+                if any(euclidean_distance(init_position, target_pos) > 0.03):
                     observation = envs.reset(config.random_reset)
                 else:
                     for _ in range(30):
@@ -230,10 +230,13 @@ def demo_run():
 
         if (frame > config.noop_steps) and ((frame + 1 - config.noop_steps) % (config.frames_per_action * config.actions_per_episode) == 0):
             done = np.ones(config.num_envs)
-            #selected_goals = np.random.choice(2, config.num_envs)
-            #envs.set_goal_position(goals_positions[selected_goals])
-            envs.set_goal_position(gen_random_goals())
-            if any(euclidean_distance(init_position, envs.get_obj_pos(target)) > 0.03):
+            target_pos = envs.get_obj_pos(target)
+            
+            if config.random_goal == "random":
+                new_goals = gen_random_goals(center=target_pos, radius=np.ones(config.num_envs) * 0.15)
+                envs.set_goal_position(new_goals)
+                
+            if any(euclidean_distance(init_position, target_pos) > 0.03):
                 observation = envs.reset(config.random_reset)
             else:
                 for _ in range(30):
@@ -281,12 +284,11 @@ def showoff(controller, target="orange", punished_objects=["mustard", "tomato"])
     envs = [make_env(env_id)]
     envs = RobotVecEnv(envs, keys=["joint_positions", "touch_sensors"]) # Add 'retina' and/or 'touch_sensors' if needed
     envs = VecNormalize(envs, size_obs_to_norm = 13 + 3*1 + 3*1, ret=True)
-    goal_position_0 = np.array([[-0.10, 0.40, 0.41]])
-    goal_position_1 = np.array([[-0.10, -0.40, 0.41]])
-    goal_positions = np.array([goal_position_0, goal_position_1]) # TO CHANGE TO HAVE SEVERAL GOALS
-    current_goal = 0
-    
-    envs.set_goal_position(goal_positions[1])
+
+    init_position = envs.get_obj_pos(target)
+    # If we want a fixed goal : (center = desired_goal, radius=0)
+    new_goals = gen_random_goals(center=init_position, radius=np.ones(1) * 0.15)
+    envs.set_goal_position(new_goals)
     
     envs.render('human')
 
@@ -322,9 +324,19 @@ def showoff(controller, target="orange", punished_objects=["mustard", "tomato"])
             done = np.ones(config.num_envs)
 
             if num_episodes % 5 == 0:
-                current_goal = 1 - current_goal
-                envs.set_goal_position(goal_positions[current_goal])
-                print("Goal changed : now trying to achieve goal ", current_goal)
+                done = np.ones(config.num_envs)
+                target_pos = envs.get_obj_pos(target)
+    
+                if config.random_goal == "random":
+                    new_goal = gen_random_goals(center=target_pos, radius=np.ones(1) * 0.15)
+                    envs.set_goal_position(new_goal)
+                    print("Goal changed : now trying to achieve goal ", new_goal)
+
+                if any(euclidean_distance(init_position, target_pos) > 0.03):
+                    observation = envs.reset(config.random_reset)
+                else:
+                    for _ in range(30):
+                        envs.step(np.zeros((config.num_envs, 9)))
                 
             observation = envs.reset(config.random_reset)
             num_episodes += 1
@@ -392,6 +404,7 @@ def update_reward(envs, frame, reward, acc_reward, init_position, goal_position,
         if (frame + 1 - config.noop_steps) % config.frames_per_action == 0:
             config.tensorboard.add_scalar("Rewards/Reward_distance_hand_target", closeness_reward.mean(), frame)
             config.tensorboard.add_scalar("Rewards/Reward_distance_target_goal", goal_closeness_reward.mean(), frame)
+            config.tensorboard.add_scalar("Rewards/Distance_improvement", (init_distance - distance_target_goal).mean(), frame)
             #config.tensorboard.add_scalar("Rewards/Good_contacts", good_contacts.mean(), frame)
             #config.tensorboard.add_scalar("Rewards/Bad_contacts", bad_contacts.mean(), frame)
 
@@ -422,13 +435,19 @@ def limitActionByJoint(current_joints, desired_joints, max_diff):
     return current_joints + diff
 
 
-def gen_random_goals():
-    rand_x = np.random.uniform(low=-0.15, high=0.05, size=config.num_envs)
-    rand_y = np.random.uniform(low=-0.40, high=0.40, size=config.num_envs)
+def gen_random_goals(center=[[0., 0.]], radius = [[1.]]):
+
     goals = np.zeros((config.num_envs, 3))
+    a = np.random.random(config.num_envs) * 2 * np.pi
+    r = radius * np.sqrt(np.random.random(config.num_envs))
+
+    x = np.cos(a) * r
+    y = np.sin(a) * r
     
     for i in range(config.num_envs):
-        goals[i] = np.array([rand_x[i], rand_y[i], 0.41])
+        init_x = center[i][0]
+        init_y = center[i][1]
+        goals[i] = np.array([init_x + x[i], init_y + y[i], 0.41])
 
     return goals
 
