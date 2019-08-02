@@ -47,6 +47,7 @@ def loss_fn(recon_x, x, mu, logvar):
     # BCE = F.mse_loss(recon_x, x, size_average=False)
 
     # see Appendix B from VAE paper:
+
     # Kingma and Welling. Auto-Encoding Variational Bayes. ICLR, 2014
     # 0.5 * sum(1 + log(sigma^2) - mu^2 - sigma^2)
     
@@ -69,7 +70,7 @@ def collect_pictures(n=10000,
     i = 0
 
     if crop:
-        shape_pic = (240, 320, 3)#(126, 126, 3)
+        shape_pic = (254, 254, 3)#(126, 126, 3)
     else:
         shape_pic = (240, 320, 3)
 
@@ -176,7 +177,7 @@ def train_ae(data_loader,
             # ae_loss.requires_grad = True
             
             recon_images = ae(images)
-            ae_loss = F.mse_loss(recon_images[i], images[i], reduction='mean')
+            ae_loss = F.mse_loss(recon_images, images, reduction='mean')
                 
             optimizer.zero_grad()
             ae_loss.backward()
@@ -191,16 +192,16 @@ def test(crop=True,
     ae.eval()
     
     if crop:
-        shape_pic = (240, 320, 3)#(126, 126, 3)
+        shape_pic = (254, 254, 3)#(126, 126, 3)
     else:
         shape_pic = (240, 320, 3)
 
     env = gym.make('REALComp-v0')
     obs = env.reset(mode="random")
 
-    for i in tqdm.tqdm(range(10 * samples)):
+    for i in tqdm.tqdm(range(20 * samples)):
 
-        if i > 0 and i % 10 == 0:
+        if i > 0 and i % 40 == 0:
             # x = np.random.uniform(-0.05, 0.6)
             # y = np.random.uniform(-0.2, 0.2)
             # env.eye_pos = [x, y, 1.2]

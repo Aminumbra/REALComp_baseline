@@ -13,7 +13,7 @@ class Flatten(nn.Module):
         return input.view(input.size(0), -1)
 
 class UnFlatten(nn.Module):
-    def forward(self, input, size=4608):
+    def forward(self, input, size=512):
         return input.view(input.size(0), size, 1, 1)
 
 class VAE(nn.Module):
@@ -45,7 +45,7 @@ class VAE(nn.Module):
             nn.ReLU(),
             nn.ConvTranspose2d(16, 16, kernel_size=5, stride=2),
             nn.ReLU(),
-            nn.ConvTranspose2d(16, image_channels, kernel_size=6, stride=2),
+            nn.ConvTranspose2d(16, image_channels, kernel_size=5, stride=2),
             nn.Sigmoid(),
         )
         
@@ -81,22 +81,21 @@ class VAE(nn.Module):
 #### Simple autoencoder :
 
 class AutoEncoder(nn.Module):
-    def __init__(self, image_channels=3, h_dim=4608, z_dim=32):
+    def __init__(self, image_channels=3, h_dim=512, z_dim=16):
         super(AutoEncoder, self).__init__()
         self.encoder = nn.Sequential(
-            nn.Conv2d(image_channels, 16, kernel_size=5, stride=1),
+            nn.Conv2d(image_channels, 16, kernel_size=4, stride=2),
             nn.ReLU(),
-            nn.Conv2d(16, 32, kernel_size=5, stride=1),
+            nn.Conv2d(16, 32, kernel_size=4, stride=2),
             nn.ReLU(),
-            nn.Conv2d(32, 64, kernel_size=5, stride=1),
+            nn.Conv2d(32, 64, kernel_size=4, stride=2),
             nn.ReLU(),
-            nn.Conv2d(64, 128, kernel_size=5, stride=2),
+            nn.Conv2d(64, 128, kernel_size=4, stride=2),
             nn.ReLU(),
-            nn.Conv2d(128, 128, kernel_size=5, stride=2),
+            nn.Conv2d(128, 128, kernel_size=4, stride=2),
             nn.ReLU(),
-            nn.Conv2d(128, 128, kernel_size=5, stride=2),
+            nn.Conv2d(128, 128, kernel_size=4, stride=2),
             nn.ReLU(),
-            nn.MaxPool2D(3),
             Flatten()
         )
         
@@ -105,9 +104,10 @@ class AutoEncoder(nn.Module):
         
         self.decoder = nn.Sequential(
             UnFlatten(),
-            nn.ConvTranspose2d(h_dim, 128, kernel_size=5, stride=1),
+            nn.ConvTranspose2d(h_dim, 128, kernel_size=5, stride=2),
             nn.ReLU(),
-            nn.ConvTranspose2d(
+            nn.ConvTranspose2d(128, 64, kernel_size=5, stride=2),
+            nn.ReLU(),
             nn.ConvTranspose2d(64, 32, kernel_size=5, stride=2),
             nn.ReLU(),
             nn.ConvTranspose2d(32, 16, kernel_size=5, stride=2),
