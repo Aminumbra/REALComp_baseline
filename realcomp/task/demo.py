@@ -141,7 +141,7 @@ def demo_run():
 
     init_position = envs.get_obj_pos(target)
     # If we want a fixed goal : (center = desired_goal, radius=0)
-    new_goals = gen_random_goals(center=init_position, radius=np.ones(config.num_envs) * 0.15)
+    new_goals = gen_random_goals(center=init_position, radius=np.ones(config.num_envs) * 0.15, num_envs=config.num_envs)
     envs.set_goal_position(new_goals)
 
     if config.model_to_load:
@@ -217,7 +217,7 @@ def demo_run():
                 target_pos = envs.get_obj_pos(target)
     
                 if config.random_goal == "random":
-                    new_goals = gen_random_goals(center=target_pos, radius=np.ones(config.num_envs) * 0.15)
+                    new_goals = gen_random_goals(center=target_pos, radius=np.ones(config.num_envs) * 0.15, num_envs=config.num_envs)
                     envs.set_goal_position(new_goals)
 
                 if any(euclidean_distance(init_position, target_pos) > 0.03):
@@ -236,7 +236,7 @@ def demo_run():
             target_pos = envs.get_obj_pos(target)
             
             if config.random_goal == "random":
-                new_goals = gen_random_goals(center=target_pos, radius=np.ones(config.num_envs) * 0.15)
+                new_goals = gen_random_goals(center=target_pos, radius=np.ones(config.num_envs) * 0.15, num_envs=config.num_envs)
                 envs.set_goal_position(new_goals)
                 
             if any(euclidean_distance(init_position, target_pos) > 0.03):
@@ -291,16 +291,16 @@ def showoff(controller, target="orange", punished_objects=["mustard", "tomato"])
     envs = RobotVecEnv(envs, keys=["joint_positions", "touch_sensors"]) # Add 'retina' and/or 'touch_sensors' if needed
     envs = VecNormalize(envs, size_obs_to_norm = 13 + 3*1 + 3*1, ret=True)
 
+    envs.render('human')
+    observation = envs.reset(config.random_reset)
+    
     init_position = envs.get_obj_pos(target)
     # If we want a fixed goal : (center = desired_goal, radius=0)
-    new_goals = gen_random_goals(center=init_position, radius=np.ones(1) * 0.15)
+    new_goals = gen_random_goals(center=init_position, radius=np.ones(1) * 0.15, num_envs=1)
     envs.set_goal_position(new_goals)
-    
-    envs.render('human')
 
     controller.soft_reset()
     controller.num_parallel = 1
-    observation = envs.reset(config.random_reset)
     reward = None
     done = False
     num_episodes = 1
@@ -334,7 +334,7 @@ def showoff(controller, target="orange", punished_objects=["mustard", "tomato"])
                 target_pos = envs.get_obj_pos(target)
     
                 if config.random_goal == "random":
-                    new_goal = gen_random_goals(center=target_pos, radius=np.ones(1) * 0.15)
+                    new_goal = gen_random_goals(center=target_pos, radius=np.ones(1) * 0.15, num_envs=1)
                     envs.set_goal_position(new_goal)
                     print("Goal changed : now trying to achieve goal ", new_goal)
 
@@ -446,16 +446,16 @@ def limitActionByJoint(current_joints, desired_joints, max_diff):
     return current_joints + diff
 
 
-def gen_random_goals(center=[[0., 0.]], radius = [[1.]]):
+def gen_random_goals(center=[[0., 0.]], radius = [[1.]], num_envs=1):
 
-    goals = np.zeros((config.num_envs, 3))
-    a = np.random.random(config.num_envs) * 2 * np.pi
-    r = radius * np.sqrt(np.random.random(config.num_envs))
+    goals = np.zeros((num_envs, 3))
+    a = np.random.random(num_envs) * 2 * np.pi
+    r = radius * np.sqrt(np.random.random(num_envs))
 
     x = np.cos(a) * r
     y = np.sin(a) * r
     
-    for i in range(config.num_envs):
+    for i in range(num_envs):
         init_x = center[i][0]
         init_y = center[i][1]
         goals[i] = np.array([init_x + x[i], init_y + y[i], 0.41])
