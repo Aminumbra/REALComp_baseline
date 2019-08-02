@@ -95,9 +95,6 @@ def collect_pictures(n=10000,
 
             if crop:
                 #image = image[40:205, 30:285, :]
-                noise = np.floor(np.random.normal(scale=2., size=image.shape))
-                image = np.array(image + noise, dtype='uint8')
-                image = np.clip(image, 0, 255)
                 image = Image.fromarray(image)
                 image = image.resize((shape_pic[1], shape_pic[0]))  # Width, then height
 
@@ -118,7 +115,7 @@ def collect_pictures(n=10000,
 
 def load_data(path="pictures/",
               batch_size=32):
-
+    
     preprocessing = transforms.Compose([
         transforms.ToTensor()]) # Useless to use Compose for only one, but might need to add more transformations there
 
@@ -173,10 +170,14 @@ def train_ae(data_loader,
         
         for batch_idx, (images, _) in tqdm.tqdm(enumerate(data_loader)):
 
-            # ae_loss = torch.zeros(1)
-            # ae_loss.requires_grad = True
+            loc = torch.zeros_like(images)
+            scale = torch.ones_like(images) / 128.
+            dist = torch.distributions.Normal(loc, scale)
+            noise = dist.sample()
             
-            recon_images = ae(images)
+            noisy_images = torch.clamp(images + noise, 0., 1.)
+            
+            recon_images = ae(noisy_images)
             ae_loss = F.mse_loss(recon_images, images, reduction='mean')
                 
             optimizer.zero_grad()
@@ -200,10 +201,6 @@ def test(crop=True,
     obs = env.reset(mode="random")
 
     for i in tqdm.tqdm(range(samples)):
-
-        if i % 5 == 0:
-            obs = env.reset(mode="random")
-
         
         action = (np.random.random(9) - 0.5) * np.pi
         action[0] /= 2 # Facing the table
@@ -216,7 +213,7 @@ def test(crop=True,
 
         if crop:
             #image = image[40:205, 30:285, :]
-            noise = np.floor(np.random.normal(scale=2., size=image.shape))
+            noise = np.floor(np.random.normal(scale=0., size=image.shape))
             image = np.array(image + noise, dtype='uint8')
             image = np.clip(image, 0, 255)
             image = Image.fromarray(image)
