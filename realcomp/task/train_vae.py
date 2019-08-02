@@ -199,52 +199,49 @@ def test(crop=True,
     env = gym.make('REALComp-v0')
     obs = env.reset(mode="random")
 
-    for i in tqdm.tqdm(range(20 * samples)):
+    for i in tqdm.tqdm(range(samples)):
 
-        if i > 0 and i % 40 == 0:
-            # x = np.random.uniform(-0.05, 0.6)
-            # y = np.random.uniform(-0.2, 0.2)
-            # env.eye_pos = [x, y, 1.2]
-            # env.set_eye("eye")
+        if i % 5 == 0:
             obs = env.reset(mode="random")
 
-        if i % 20 == 0:
-            action = (np.random.random(9) - 0.5) * np.pi
-            #action = np.zeros(9)
-                                
-        obs, _, _, _ = env.step(action)
+        
+        action = (np.random.random(9) - 0.5) * np.pi
+        action[0] /= 2 # Facing the table
+        action[1] = abs(action[1]) # Tends to have the arm going down
 
-        if i % 10 == 0:
-            image = obs["retina"]
+        for _ in range(20):
+            obs, _, _, _ = env.step(action)
 
-            if crop:
-                #image = image[40:205, 30:285, :]
-                noise = np.floor(np.random.normal(scale=2., size=image.shape))
-                image = np.array(image + noise, dtype='uint8')
-                image = np.clip(image, 0, 255)
-                image = Image.fromarray(image)
-                image = image.resize((shape_pic[1], shape_pic[0]))  # Width, then height
-            else:
-                image = Image.fromarray(image)
+        image = obs["retina"]
 
-            plt.imshow(image)
-            plt.title("Initial image")
-            plt.show()
-                
-            image = np.ravel(image) / 255.
-            image = torch.FloatTensor(image)
-            image = image.reshape((shape_pic[0], shape_pic[1], shape_pic[2]))
-            image = image.permute(2, 0, 1)
+        if crop:
+            #image = image[40:205, 30:285, :]
+            noise = np.floor(np.random.normal(scale=2., size=image.shape))
+            image = np.array(image + noise, dtype='uint8')
+            image = np.clip(image, 0, 255)
+            image = Image.fromarray(image)
+            image = image.resize((shape_pic[1], shape_pic[0]))  # Width, then height
+        else:
+            image = Image.fromarray(image)
 
-            recon_image = ae(image.unsqueeze(0))
+        plt.imshow(image)
+        plt.title("Initial image")
+        plt.show()
 
-            recon_image = recon_image.detach()
-            recon_image = recon_image.squeeze(0)
-            recon_image = recon_image.permute(1, 2, 0)
-            
-            plt.imshow(recon_image)
-            plt.title("Reconstructed image")
-            plt.show()
+        image = np.ravel(image) / 255.
+        image = torch.FloatTensor(image)
+        image = image.reshape((shape_pic[0], shape_pic[1], shape_pic[2]))
+        image = image.permute(2, 0, 1)
+
+        recon_image = ae(image.unsqueeze(0))
+
+        recon_image = recon_image.detach()
+        recon_image = recon_image.squeeze(0)
+        recon_image = recon_image.permute(1, 2, 0)
+
+        plt.imshow(recon_image)
+        plt.title("Reconstructed image")
+        plt.show()
 
     ## Sampling from z :
 
@@ -285,7 +282,7 @@ if __name__=="__main__":
             elif arg == "test":
                 model_to_load = f'{sys.argv[3]}'
                 ae.load_state_dict(torch.load(model_to_load))
-                test()
+                test(samples=30)
 
     except KeyboardInterrupt:
         tensorboard.close()
