@@ -59,8 +59,9 @@ def loss_fn(recon_x, x, mu, logvar):
 # Training functions 
 def collect_pictures(n=10000,
                      crop=True,
-                     path="pictures/pictures_cube/",
-                     freq_images=10):
+                     path="pictures/pictures_3_objects/",
+                     freq_images=10,
+                     with_robot=False):
 
     env = gym.make('REALComp-v0')
     obs = env.reset()
@@ -75,22 +76,57 @@ def collect_pictures(n=10000,
         shape_pic = (240, 320, 3)
 
     while count_images < n:
-        if i > 0 and i % 27 == 0:
-            # x = np.random.uniform(-0.05, 0.05)
-            # y = np.random.uniform(0.0, 0.5)
-            # env.eye_pos = [x, y, 1.2]
-            # env.set_eye("eye")
+        if with_robot:
+            if i > 0 and i % 27 == 0:
+                # x = np.random.uniform(-0.05, 0.05)
+                # y = np.random.uniform(0.0, 0.5)
+                # env.eye_pos = [x, y, 1.2]
+                # env.set_eye("eye")
+                obs = env.reset(mode="random")
+
+            if i % 20 == 0:
+                action = (np.random.random(9) - 0.5) * np.pi
+                action[0] /= 2 # Facing the table
+                action[1] = abs(action[1]) # Tends to have the arm going down
+                #action = np.zeros(9)
+
+            obs, _, _, _ = env.step(action)
+
+            if i> 0 and i % freq_images == 0:
+                image = obs["retina"]
+
+                if crop:
+                    #image = image[40:205, 30:285, :]
+                    image = Image.fromarray(image)
+                    image = image.resize((shape_pic[1], shape_pic[0]))  # Width, then height
+
+                else:
+                    image = Image.fromarray(image)
+
+                    image_name = path + "image_" + str(count_images) + ".jpeg"
+                    image.save(image_name)
+
+                count_images += 1
+            
+                bar.update(1)
+
+                i += 1
+
+        else: # No robot : with_reobot == False
             obs = env.reset(mode="random")
 
-        if i % 20 == 0:
-            action = (np.random.random(9) - 0.5) * np.pi
-            action[0] /= 2 # Facing the table
-            action[1] = abs(action[1]) # Tends to have the arm going down
-            #action = np.zeros(9)
+            # Taking actions : might make one object fall !
+            for _ in range(4):
+                action = (np.random.random(9) - 0.5) * np.pi
+                action[0] /= 2 # Facing the table
+                action[1] = abs(action[1]) # Tends to have the arm going down
 
-        obs, _, _, _ = env.step(action)
+                for _ in range(15):
+                    env.step(action)
 
-        if i> 0 and i % freq_images == 0:
+            for _ in range(20):
+                obs, _, _, _ = env.step(np.zeros(9))
+                
             image = obs["retina"]
 
             if crop:
@@ -103,12 +139,10 @@ def collect_pictures(n=10000,
 
             image_name = path + "image_" + str(count_images) + ".jpeg"
             image.save(image_name)
-
+                
             count_images += 1
-            
+                
             bar.update(1)
-
-        i += 1
 
     bar.close()
 
@@ -171,14 +205,14 @@ def train_ae(data_loader,
         for batch_idx, (images, _) in tqdm.tqdm(enumerate(data_loader)):
 
             loc = torch.zeros_like(images)
-            scale = torch.ones_like(images) / 128.
+            scale = torch.ones_like(images) / 64.
             dist = torch.distributions.Normal(loc, scale)
             noise = dist.sample()
             
             noisy_images = torch.clamp(images + noise, 0., 1.)
-            
+
             recon_images = ae(noisy_images)
-            ae_loss = F.mse_loss(recon_images, images, reduction='mean')
+            ae_loss = F.mse_loss(recon_images, noisy_images, reduction='mean')
                 
             optimizer.zero_grad()
             ae_loss.backward()
@@ -188,7 +222,8 @@ def train_ae(data_loader,
         
 
 def test(crop=True,
-         samples=10):
+         samples=10,
+         with_robot=False):
 
     ae.eval()
     
@@ -201,13 +236,16 @@ def test(crop=True,
     obs = env.reset(mode="random")
 
     for i in tqdm.tqdm(range(samples)):
-        
-        action = (np.random.random(9) - 0.5) * np.pi
-        action[0] /= 2 # Facing the table
-        action[1] = abs(action[1]) # Tends to have the arm going down
 
-        for _ in range(20):
-            obs, _, _, _ = env.step(action)
+        obs = env.reset("random")
+        
+        if with_robot:
+            action = (np.random.random(9) - 0.5) * np.pi
+            action[0] /= 2 # Facing the table
+            action[1] = abs(action[1]) # Tends to have the arm going down
+
+            for _ in range(20):
+                obs, _, _, _ = env.step(action)
 
         image = obs["retina"]
 
@@ -220,7 +258,7 @@ def test(crop=True,
             image = image.resize((shape_pic[1], shape_pic[0]))  # Width, then height
         else:
             image = Image.fromarray(image)
-
+            
         plt.imshow(image)
         plt.title("Initial image")
         plt.show()
@@ -265,14 +303,19 @@ if __name__=="__main__":
         if len(sys.argv) > 2:
             arg = f'{sys.argv[2]}'
             if arg == "collect":
-                collect_pictures(n=1024)
+                if len(sys.argv) > 3:
+                    path = f'{sys.argv[3]}'
+                    collect_pictures(n=1024, path=path)
+                else:
+                    collect_pictures(n=1024)
+                    
             elif arg == "train":
                 if len(sys.argv) > 3:
                     model_to_load = f'{sys.argv[3]}'
                     ae.load_state_dict(torch.load(model_to_load))
                     
                 train_loader = load_data()
-                train_ae(data_loader=train_loader, epochs=50)
+                train_ae(data_loader=train_loader, epochs=70)
                 tensorboard.close()
                 torch.save(ae.state_dict(), "models/" + experiment_name + ".pth")
                 test()
